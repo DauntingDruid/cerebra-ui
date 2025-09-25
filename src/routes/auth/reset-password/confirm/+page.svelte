@@ -6,7 +6,10 @@
 	const i18n = getContext('i18n');
 
 	let loaded = false;
-	let email = '';
+	let password = '';
+	let confirmPassword = '';
+	let passwordError = '';
+	let confirmPasswordError = '';
 
 	async function setLogoImage() {
 		await tick();
@@ -31,11 +34,36 @@
 		}
 	}
 
+	function validatePassword() {
+		passwordError = '';
+		if (password.length < 6) {
+			passwordError = 'Password must be at least 6 characters long';
+			return false;
+		}
+		return true;
+	}
+
+	function validateConfirmPassword() {
+		confirmPasswordError = '';
+		if (confirmPassword !== password) {
+			confirmPasswordError = 'Passwords do not match';
+			return false;
+		}
+		return true;
+	}
+
 	const handleSubmit = (e) => {
 		e.preventDefault();
-		// TODO: 这里应该调用重置密码的API
-		// 现在先静态跳转到邮箱验证页面
-		goto('/auth/verify-email?type=reset');
+		
+		// 验证密码
+		const isPasswordValid = validatePassword();
+		const isConfirmPasswordValid = validateConfirmPassword();
+		
+		if (isPasswordValid && isConfirmPasswordValid) {
+			// TODO: 这里应该调用重置密码的API
+			// 现在先静态跳转到主页
+			goto('/');
+		}
 	};
 
 	onMount(async () => {
@@ -73,24 +101,46 @@
 				<!-- Reset Form -->
 				<form class="space-y-6" on:submit={handleSubmit}>
 					<div>
-						<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Email
+						<label for="password" class="block text-sm font-medium text-black dark:text-white mb-2">
+							Reset your password
 						</label>
 						<input
-							id="email"
-							bind:value={email}
-							type="email"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your email"
+							id="password"
+							bind:value={password}
+							type="password"
+							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {passwordError ? 'border-red-500' : ''}"
+							placeholder="Enter new password"
 							required
+							on:blur={validatePassword}
 						/>
+						{#if passwordError}
+							<p class="text-red-500 text-sm mt-1">{passwordError}</p>
+						{/if}
+					</div>
+
+					<div>
+						<label for="confirm-password" class="block text-sm font-medium text-black dark:text-white mb-2">
+							Confirm your password
+						</label>
+						<input
+							id="confirm-password"
+							bind:value={confirmPassword}
+							type="password"
+							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {confirmPasswordError ? 'border-red-500' : ''}"
+							placeholder="Confirm new password"
+							required
+							on:blur={validateConfirmPassword}
+						/>
+						{#if confirmPasswordError}
+							<p class="text-red-500 text-sm mt-1">{confirmPasswordError}</p>
+						{/if}
 					</div>
 
 					<button
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
 					>
-						Send Email
+						Confirm
 					</button>
 				</form>
 
@@ -108,4 +158,3 @@
 		</div>
 	</div>
 </div>
-

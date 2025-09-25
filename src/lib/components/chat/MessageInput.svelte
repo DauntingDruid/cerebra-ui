@@ -38,7 +38,7 @@
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
 	import FilesOverlay from './MessageInput/FilesOverlay.svelte';
 	import Commands from './MessageInput/Commands.svelte';
-	import WorkflowMenu from './MessageInput/WorkflowMenu.svelte';
+	// import WorkflowMenu from './MessageInput/WorkflowMenu.svelte'; // 已暂时注释掉
 
 	import RichTextInput from '../common/RichTextInput.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -48,10 +48,11 @@
 	import XMark from '../icons/XMark.svelte';
 	import Headphone from '../icons/Headphone.svelte';
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
+	import DeepResearchIcon from '../icons/DeepResearchIcon.svelte';
 	import PhotoSolid from '../icons/PhotoSolid.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import CommandLine from '../icons/CommandLine.svelte';
-	import WorkflowIcon from '../icons/WorkflowIcon.svelte';
+	// import WorkflowIcon from '../icons/WorkflowIcon.svelte'; // 已暂时注释掉
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import ToolServersModal from './ToolServersModal.svelte';
 	import Wrench from '../icons/Wrench.svelte';
@@ -81,25 +82,41 @@
 	export let toolServers = [];
 
 	export let selectedToolIds = [];
-	export let selectedWorkflowIds = [];
+	// export let selectedWorkflowIds = []; // 已暂时注释掉
 
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
+	export let deepResearchEnabled = false;
 	export let codeInterpreterEnabled = false;
 
 	$: onChange({
 		prompt,
 		files,
 		selectedToolIds,
-		selectedWorkflowIds,
+		// selectedWorkflowIds, // 已暂时注释掉
 		imageGenerationEnabled,
 		webSearchEnabled,
+		deepResearchEnabled,
 	});
 
 	let showTools = false;
-	let showWorkflows = false;
+	// let showWorkflows = false; // 已暂时注释掉
 
 	let loaded = false;
+
+	// Deep Research配置函数
+	function getDeepResearchEnabled() {
+		try {
+			const saved = localStorage.getItem('deepResearchConfig');
+			if (saved) {
+				const config = JSON.parse(saved);
+				return config.ENABLE_DEEP_RESEARCH === true;
+			}
+		} catch (error) {
+			console.error('Error loading deep research config:', error);
+		}
+		return true; // 默认开启
+	}
 	let recording = false;
 
 	let isComposing = false;
@@ -1152,6 +1169,24 @@
 													</Tooltip>
 												{/if}
 
+												{#if getDeepResearchEnabled()}
+													<Tooltip content={$i18n.t('Deep Research')} placement="top">
+														<button
+															on:click|preventDefault={() => (deepResearchEnabled = !deepResearchEnabled)}
+															type="button"
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {deepResearchEnabled
+																? 'bg-purple-100 dark:bg-purple-500/20 border-purple-400/20 text-purple-500 dark:text-purple-400'
+																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+														>
+															<DeepResearchIcon className="size-5" strokeWidth="1.75" />
+															<span
+																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
+																>{$i18n.t('Deep Research')}</span
+															>
+														</button>
+													</Tooltip>
+												{/if}
+
 												{#if $config?.features?.enable_image_generation && ($_user.role === 'admin' || $_user?.permissions?.features?.image_generation)}
 													<Tooltip content={$i18n.t('Generate an image')} placement="top">
 														<button
@@ -1190,7 +1225,8 @@
 													</Tooltip>
 												{/if}
 
-												<!-- Workflow Button -->
+												<!-- Workflow Button - 已暂时注释掉 -->
+												<!-- 
 												{#if $_user.role === 'admin'}
 													<WorkflowMenu
 														bind:selectedWorkflowIds
@@ -1213,6 +1249,7 @@
 														</button>
 													</WorkflowMenu>
 												{/if}
+												-->
 
 											{/if}
 										</div>

@@ -90,6 +90,22 @@
 					</button>
 				</div>
 
+				<!-- Password Reset Link (only for reset type) -->
+				{#if verificationType === 'reset'}
+					<div class="mb-8">
+						<p class="text-sm text-gray-500 dark:text-gray-500 mb-4">
+							For testing purposes, you can click the link below to proceed to password reset:
+						</p>
+						<button
+							type="button"
+							class="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-2 rounded-lg text-sm transition-colors"
+							on:click={() => goto('/auth/reset-password/confirm')}
+						>
+							Continue to Password Reset
+						</button>
+					</div>
+				{/if}
+
 				<!-- Back to Login -->
 				<div class="border-t border-gray-200 dark:border-gray-700 pt-6">
 					<p class="text-sm text-gray-500 dark:text-gray-500 mb-4">

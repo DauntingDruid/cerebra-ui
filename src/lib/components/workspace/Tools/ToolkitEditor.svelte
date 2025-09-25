@@ -219,79 +219,82 @@ class Tools:
 	>
 		<div class=" w-full flex flex-col justify-center">
 
-			<div class="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+			<div class="w-full flex flex-col gap-5">
+				<div class="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div class="w-full">
+						<div class=" text-sm mb-2">{$i18n.t('Title')}</div>
+						<div class="w-full mt-1">
+							<input
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="text"
+								bind:value={name}
+								placeholder={$i18n.t('Tool Name')}
+								required
+							/>
+						</div>
+					</div>
+
+					<div class="w-full">
+						<div class=" text-sm mb-2">{$i18n.t('Tool ID')}</div>
+						<div class="w-full mt-1">
+							<input
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="text"
+								bind:value={id}
+								placeholder={$i18n.t('Tool ID')}
+								required
+								disabled={edit}
+							/>
+						</div>
+					</div>
+				</div>
+
 				<div class="w-full">
-					<div class=" text-sm mb-2">{$i18n.t('Title')}</div>
+					<div class=" text-sm mb-2">{$i18n.t('Description')}</div>
 					<div class="w-full mt-1">
 						<input
 							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 							type="text"
-							bind:value={name}
-							placeholder={$i18n.t('Tool Name')}
+							bind:value={meta.description}
+							placeholder={$i18n.t('Tool Description')}
 							required
 						/>
 					</div>
 				</div>
 
 				<div class="w-full">
-					<div class=" text-sm mb-2">{$i18n.t('Tool ID')}</div>
-					<div class="w-full mt-1">
-						<input
-							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-							type="text"
-							bind:value={id}
-							placeholder={$i18n.t('Tool ID')}
-							required
-							disabled={edit}
-						/>
+					<div class=" text-sm mb-2">{$i18n.t('Tool Content')}</div>
+					<div class=" w-full mt-1">
+						<div class="w-full rounded-lg bg-gray-50 dark:bg-gray-850 h-[400px] overflow-hidden">
+							<CodeEditor
+								bind:this={codeEditor}
+								value={content}
+								lang="python"
+								{boilerplate}
+								onChange={(e) => {
+									_content = e;
+								}}
+								onSave={async () => {
+									if (formElement) {
+										formElement.requestSubmit();
+									}
+								}}
+							/>
+						</div>
+					</div>
+					
+					<div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+						ⓘ {$i18n.t('Tools are a function calling system with arbitrary code execution')}.
+						{$i18n.t('Make sure to add type hints and descriptions for your functions')}.
+					</div>
+
+					<div class="text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Do not install tools from sources you do not fully trust')}.
 					</div>
 				</div>
 			</div>
-
-			<div class="w-full mt-4">
-				<div class=" text-sm mb-2">{$i18n.t('Description')}</div>
-				<div class="w-full mt-1">
-					<input
-						class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-						type="text"
-						bind:value={meta.description}
-						placeholder={$i18n.t('Tool Description')}
-						required
-					/>
-				</div>
-			</div>
 		</div>
 
-		<div class="w-full">
-			<div class=" text-sm mb-2">{$i18n.t('Tool Content')}</div>
-			<div class=" w-full mt-1">
-				<div class="w-full rounded-lg bg-gray-50 dark:bg-gray-850 h-[400px] overflow-hidden">
-					<CodeEditor
-						bind:this={codeEditor}
-						value={content}
-						lang="python"
-						{boilerplate}
-						onChange={(e) => {
-							_content = e;
-						}}
-						onSave={async () => {
-							if (formElement) {
-								formElement.requestSubmit();
-							}
-						}}
-					/>
-				</div>
-			</div>
-			
-			<div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-				ⓘ {$i18n.t('Tools are a function calling system with arbitrary code execution')}.
-				{$i18n.t('Make sure to add type hints and descriptions for your functions')}.
-			</div>
-
-			<div class="text-xs text-gray-400 dark:text-gray-500">
-				{$i18n.t('Do not install tools from sources you do not fully trust')}.
-			</div>
-		</div>
 
 		<div class="mt-2">
 			<div class="px-3 py-2 bg-gray-50 dark:bg-gray-950 rounded-lg">
@@ -305,7 +308,7 @@ class Tools:
 
 		<div class="flex justify-center mt-8 mb-12">
 			<button
-				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
+				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium text-sm hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
 				type="submit"
 				disabled={loading}
 			>

@@ -194,7 +194,7 @@
 
 					<div>
 						<button
-							class=" text-sm text-center text-gray-800 dark:text-gray-400 rounded-full px-4 py-0.5 bg-gray-100 dark:bg-gray-850"
+							class=" text-sm text-center text-gray-800 dark:text-gray-400 rounded-lg px-4 py-0.5 bg-gray-100 dark:bg-gray-850"
 							on:click={async () => {
 								if (canvasPixelTest()) {
 									profileImageUrl = generateInitialsImage(name);
@@ -212,7 +212,7 @@
 						>
 
 						<button
-							class=" text-sm text-center text-gray-800 dark:text-gray-400 rounded-full px-4 py-0.5 bg-gray-100 dark:bg-gray-850"
+							class=" text-sm text-center text-gray-800 dark:text-gray-400 rounded-lg px-4 py-0.5 bg-gray-100 dark:bg-gray-850"
 							on:click={async () => {
 								const url = await getGravatarUrl(localStorage.token, $user?.email);
 
@@ -274,7 +274,7 @@
 		<div class="flex justify-between items-center text-sm">
 			<div class="  font-medium">{$i18n.t('API keys')}</div>
 			<button
-				class=" text-base font-medium text-gray-500"
+				class=" text-sm font-medium text-gray-500"
 				type="button"
 				on:click={() => {
 					showAPIKeys = !showAPIKeys;

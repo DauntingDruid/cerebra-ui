@@ -1,14 +1,16 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { DropdownMenu } from 'bits-ui';
+	import { flyAndScale } from '$lib/utils/transitions';
 	import { getContext } from 'svelte';
-	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 
+	import Dropdown from '$lib/components/common/Dropdown.svelte';
 	import ArrowDownTray from '../../icons/ArrowDownTray.svelte';
 	import Pencil from '../../icons/Pencil.svelte';
 	import GarbageBin from '../../icons/GarbageBin.svelte';
 	import Heart from '../../icons/Heart.svelte';
 	import ChevronRight from '../../icons/ChevronRight.svelte';
+	import Tooltip from '$lib/components/common/Tooltip.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -17,8 +19,7 @@
 	export let onClone: (workflow: any) => void;
 	export let onExport: (workflow: any) => void;
 	export let onDelete: (workflow: any) => void;
-
-	const dispatch = createEventDispatcher();
+	export let onClose: Function = () => {};
 
 	let show = false;
 
@@ -48,65 +49,67 @@
 	};
 </script>
 
-<div class="relative">
-	<button
-		class="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-		on:click={() => (show = !show)}
-		on:blur={() => setTimeout(() => (show = false), 150)}
-	>
+<Dropdown
+	bind:show
+	on:change={(e) => {
+		if (e.detail === false) {
+			onClose();
+		}
+	}}
+>
+	<Tooltip content={$i18n.t('More')}>
 		<slot />
-	</button>
+	</Tooltip>
 
-	{#if show}
-		<div
-			class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50"
-			on:click|stopPropagation
-			role="menu"
-			tabindex="-1"
+	<div slot="content">
+		<DropdownMenu.Content
+			class="w-full max-w-[160px] rounded-xl px-1 py-1.5 border border-gray-300/30 dark:border-gray-700/50 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-sm"
+			sideOffset={-2}
+			side="bottom"
+			align="start"
+			transition={flyAndScale}
 		>
-			<div class="py-1">
-				<button
-					class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-					on:click={handleEdit}
-				>
-					<Pencil className="size-4" />
-					{$i18n.t('Edit')}
-				</button>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleEdit}
+			>
+				<Pencil className="size-4" />
+				<div class="flex items-center">{$i18n.t('Edit')}</div>
+			</DropdownMenu.Item>
 
-				<button
-					class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-					on:click={handleClone}
-				>
-					<ChevronRight className="size-4" />
-					{$i18n.t('Clone')}
-				</button>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleClone}
+			>
+				<ChevronRight className="size-4" />
+				<div class="flex items-center">{$i18n.t('Clone')}</div>
+			</DropdownMenu.Item>
 
-				<button
-					class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-					on:click={handleExport}
-				>
-					<ArrowDownTray className="size-4" />
-					{$i18n.t('Export')}
-				</button>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleExport}
+			>
+				<ArrowDownTray className="size-4" />
+				<div class="flex items-center">{$i18n.t('Export')}</div>
+			</DropdownMenu.Item>
 
-				<button
-					class="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
-					on:click={handleShare}
-				>
-					<Heart className="size-4" />
-					{$i18n.t('Share')}
-				</button>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleShare}
+			>
+				<Heart className="size-4" />
+				<div class="flex items-center">{$i18n.t('Share')}</div>
+			</DropdownMenu.Item>
 
-				<div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+			<hr class="border-gray-100 dark:border-gray-850 my-1" />
 
-				<button
-					class="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
-					on:click={handleDelete}
-				>
-					<GarbageBin className="size-4" />
-					{$i18n.t('Delete')}
-				</button>
-			</div>
-		</div>
-	{/if}
-</div>
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleDelete}
+			>
+				<GarbageBin strokeWidth="2" />
+				<div class="flex items-center">{$i18n.t('Delete')}</div>
+			</DropdownMenu.Item>
+		</DropdownMenu.Content>
+	</div>
+</Dropdown>

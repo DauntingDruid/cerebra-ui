@@ -65,7 +65,7 @@
 	>
 		<div class=" w-full flex flex-col justify-center">
 
-			<div class="w-full flex flex-col gap-2.5">
+			<div class="w-full flex flex-col gap-5">
 				<div class="w-full">
 					<div class=" text-sm mb-2">{$i18n.t('What are you working on?')}</div>
 
@@ -108,7 +108,7 @@
 
 		<div class="flex justify-center mt-8 mb-12">
 			<button
-				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
+				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium text-sm hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
 				type="submit"
 				disabled={loading}
 			>

@@ -121,10 +121,25 @@
 	let selectedToolIds = [];
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
+	let deepResearchEnabled = false;
 	let codeInterpreterEnabled = false;
 	let selectedWorkflowId = null;
 
 	let chat = null;
+
+	// Deep Research配置函数
+	function getDeepResearchEnabled() {
+		try {
+			const saved = localStorage.getItem('deepResearchConfig');
+			if (saved) {
+				const config = JSON.parse(saved);
+				return config.ENABLE_DEEP_RESEARCH === true;
+			}
+		} catch (error) {
+			console.error('Error loading deep research config:', error);
+		}
+		return true; // 默认开启
+	}
 	let tags = [];
 
 	let history = {
@@ -149,6 +164,7 @@
 			files = [];
 			selectedToolIds = [];
 			webSearchEnabled = false;
+			deepResearchEnabled = false;
 			imageGenerationEnabled = false;
 
 			if (chatIdProp && (await loadChat())) {
@@ -163,6 +179,7 @@
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
 						webSearchEnabled = input.webSearchEnabled;
+						deepResearchEnabled = input.deepResearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
 					} catch (e) {}
 				}
@@ -422,12 +439,14 @@
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
 				webSearchEnabled = input.webSearchEnabled;
+				deepResearchEnabled = input.deepResearchEnabled;
 				imageGenerationEnabled = input.imageGenerationEnabled;
 			} catch (e) {
 				prompt = '';
 				files = [];
 				selectedToolIds = [];
 				webSearchEnabled = false;
+				deepResearchEnabled = false;
 				imageGenerationEnabled = false;
 			}
 		}
@@ -1607,7 +1626,8 @@
 						$config?.features?.enable_web_search &&
 						($user?.role === 'admin' || $user?.permissions?.features?.web_search)
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
-							: false
+							: false,
+					deep_research: getDeepResearchEnabled() ? deepResearchEnabled : false
 				},
 				variables: {
 					...getPromptVariables(
@@ -2033,6 +2053,7 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
+								bind:deepResearchEnabled
 								bind:selectedWorkflowId
 								bind:atSelectedModel
 								toolServers={$toolServers}
@@ -2087,6 +2108,7 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
+								bind:deepResearchEnabled
 								bind:atSelectedModel
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
 								toolServers={$toolServers}

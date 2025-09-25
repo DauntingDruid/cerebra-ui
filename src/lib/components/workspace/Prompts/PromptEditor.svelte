@@ -97,7 +97,7 @@
 	>
 		<div class=" w-full flex flex-col justify-center">
 
-			<div class="w-full flex flex-col gap-2.5">
+			<div class="w-full flex flex-col gap-5">
 				<div class="w-full">
 					<div class=" text-sm mb-2">{$i18n.t('Title')}</div>
 					<div class="w-full mt-1">
@@ -124,39 +124,40 @@
 						/>
 					</div>
 				</div>
+
+				<div class="w-full">
+					<div class=" text-sm mb-2">{$i18n.t('Prompt Content')}</div>
+					<div class=" w-full mt-1">
+						<textarea
+							class="w-full resize-none rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+							rows="6"
+							bind:value={content}
+							placeholder={$i18n.t('Write a summary in 50 words that summarizes [topic or keyword].')}
+							required
+						/>
+					</div>
+					
+					<div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+						ⓘ {$i18n.t('Format your variables using brackets like this:')}&nbsp;<span
+							class=" text-gray-600 dark:text-gray-300 font-medium"
+							>{'{{'}{$i18n.t('variable')}{'}}'}</span
+						>.
+						{$i18n.t('Make sure to enclose them with')}
+						<span class=" text-gray-600 dark:text-gray-300 font-medium">{'{{'}</span>
+						{$i18n.t('and')}
+						<span class=" text-gray-600 dark:text-gray-300 font-medium">{'}}'}</span>.
+					</div>
+
+					<div class="text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Utilize')}<span class=" text-gray-600 dark:text-gray-300 font-medium">
+							{` {{CLIPBOARD}}`}</span
+						>
+						{$i18n.t('variable to have them replaced with clipboard content.')}
+					</div>
+				</div>
 			</div>
 		</div>
 
-		<div class="w-full">
-			<div class=" text-sm mb-2">{$i18n.t('Prompt Content')}</div>
-			<div class=" w-full mt-1">
-				<textarea
-					class="w-full resize-none rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
-					rows="6"
-					bind:value={content}
-					placeholder={$i18n.t('Write a summary in 50 words that summarizes [topic or keyword].')}
-					required
-				/>
-			</div>
-			
-			<div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-				ⓘ {$i18n.t('Format your variables using brackets like this:')}&nbsp;<span
-					class=" text-gray-600 dark:text-gray-300 font-medium"
-					>{'{{'}{$i18n.t('variable')}{'}}'}</span
-				>.
-				{$i18n.t('Make sure to enclose them with')}
-				<span class=" text-gray-600 dark:text-gray-300 font-medium">{'{{'}</span>
-				{$i18n.t('and')}
-				<span class=" text-gray-600 dark:text-gray-300 font-medium">{'}}'}</span>.
-			</div>
-
-			<div class="text-xs text-gray-400 dark:text-gray-500">
-				{$i18n.t('Utilize')}<span class=" text-gray-600 dark:text-gray-300 font-medium">
-					{` {{CLIPBOARD}}`}</span
-				>
-				{$i18n.t('variable to have them replaced with clipboard content.')}
-			</div>
-		</div>
 
 		<div class="mt-2">
 			<div class="px-3 py-2 bg-gray-50 dark:bg-gray-950 rounded-lg">
@@ -170,7 +171,7 @@
 
 		<div class="flex justify-center mt-8 mb-12">
 			<button
-				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
+				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium text-sm hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
 				type="submit"
 				disabled={loading}
 			>

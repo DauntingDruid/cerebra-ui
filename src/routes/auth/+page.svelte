@@ -154,8 +154,8 @@
 			onboarding = $config?.onboarding ?? false;
 		}
 		
-		// 如果不是onboarding状态，重定向到新的登录页面
-		if (!onboarding) {
+		// 如果不是onboarding状态，且不在密码重置相关页面，重定向到新的登录页面
+		if (!onboarding && !window.location.pathname.includes('/forgot-password') && !window.location.pathname.includes('/reset-password')) {
 			goto('/auth/login');
 		}
 	});
