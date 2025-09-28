@@ -30,6 +30,8 @@ class User(Base):
     created_at = Column(BigInteger)
 
     api_key = Column(String, nullable=True, unique=True)
+    n8n_api_key = Column(String, nullable=True)
+    langflow_api_key = Column(String, nullable=True)
     settings = Column(JSONField, nullable=True)
     info = Column(JSONField, nullable=True)
 

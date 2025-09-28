@@ -1,6 +1,8 @@
 services:
   ollama:
     image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
+    ports:
+      - "11434:11434"
     container_name: ollama
     pull_policy: always
     tty: true
@@ -14,21 +16,104 @@ services:
     depends_on:
       - ollama
       - redis
+      - pipelines
     ports:
       - ${OPEN_WEBUI_PORT-3000}:8080
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_SECRET_KEY=dev-secret
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_URL=redis://redis:6379/0
       - WEBSOCKET_MANAGER=redis
       - WEBSOCKET_REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEYS=${PIPELINES_API_KEY}
+      - OPENAI_API_BASE_URLS=http://pipelines:9099  # Point to Pipelines
+      - DATA_DIR=/app/backend/data
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY}
+      - DATABASE_URL=sqlite:////app/backend/data/webui.db
     volumes:
       - open-webui:/app/backend/data
     extra_hosts:
       - host.docker.internal:host-gateway
     restart: unless-stopped
+
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:latest
+    ports:
+      - "9099:9099"  # Expose for Open WebUI
+    volumes:
+      - ./backend/open_webui/pipelines:/app/pipelines
+      - ./backend/open_webui/env.py:/app/env.py:ro
+      - ./openwebui-data:/app/backend/data
+    environment:
+      - PIPELINES_API_KEY=${PIPELINES_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - N8N_BASE=${N8N_BASE}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - LANGFLOW_BASE=${LANGFLOW_BASE}
+      - LANGFLOW_FLOW_ID=${LANGFLOW_FLOW_ID}
+      - LANGFLOW_API_KEY=${LANGFLOW_API_KEY}
+      - LANGFLOW_TIMEOUT=60
+    depends_on:
+      - n8n
+      - langflow
+    restart: unless-stopped
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: always
+    ports:
+      - 5678:5678
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://n8n:5678/  # Use internal service name
+      - GENERIC_TIMEZONE=Australia/Sydney
+      - TZ=Australia/Sydney
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_DIAGNOSTICS_ENABLED=true # Enable diagnostic logging
+      - N8N_LOG_LEVEL=debug
+      - N8N_USER_MANAGEMENT_ENABLED=true
+      - N8N_API_ALLOW_EXTERNAL=true
+      - N8N_API_AUTH_ENABLED=true
+      - N8N_USE_DEPRECATED_API_KEY_AUTH=true
+      - N8N_SECURE_COOKIE=false
+      - DB_SQLITE_POOL_SIZE=5  # Enables WAL mode with 5 read connections; adjust based on load (e.g., 10 for high concurrency)
+      - N8N_RUNNERS_ENABLED=true  # Enables task runners; add sidecar container if using external mode for production
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_COMMUNITY_PACKAGES_ENABLED=false
+      - N8N_HIRING_BANNER_ENABLED=false
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      - N8N_API_KEY=${N8N_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - OLLAMA_API_KEY=${OLLAMA_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  langflow:
+    image: langflowai/langflow:latest
+    ports:
+      - 7860:7860
+    environment:
+      - LANGFLOW_PORT=7860
+      - LANGFLOW_SUPERUSER=${LANGFLOW_SUPERUSER}
+      - LANGFLOW_SUPERUSER_PASSWORD=${LANGFLOW_SUPERUSER_PASSWORD}
+      - LANGFLOW_AUTO_LOGIN=false
+      - LANGFLOW_API_ENABLED=true
+      - LANGFLOW_SECRET_KEY=${LANGFLOW_SECRET_KEY}
+      - OLLAMA_API_BASE=http://ollama:11434
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PINECONE_API_KEY=${PINECONE_API_KEY}
+    volumes:
+      - langflow_data:/root/.langflow
+      - ./openwebui-data:/app/backend/data
 
   redis:
     image: redis:7
@@ -42,4 +127,6 @@ services:
 volumes:
   ollama: {}
   open-webui: {}
+  n8n_data: {}
+  langflow_data: {}
   redis_data: {}

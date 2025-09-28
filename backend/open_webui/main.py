@@ -7,10 +7,14 @@ import os
 import shutil
 import sys
 import time
+import base64
 import random
 
 from contextlib import asynccontextmanager
 from urllib.parse import urlencode, parse_qs, urlparse
+from apps.workflows import router as workflows_router
+from apps.api_keys import router as api_keys_router
+
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -21,6 +25,7 @@ import requests
 
 
 from fastapi import (
+    APIRouter,
     Depends,
     FastAPI,
     File,
@@ -454,6 +459,8 @@ app.state.config = AppConfig(
 app.state.WEBUI_NAME = WEBUI_NAME
 app.state.LICENSE_METADATA = None
 
+app.include_router(workflows_router)
+app.include_router(api_keys_router)
 
 ########################################
 #
@@ -1064,6 +1071,21 @@ async def get_base_models(request: Request, user=Depends(get_admin_user)):
     models = await get_all_base_models(request, user=user)
     return {"data": models}
 
+
+router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+@router.post("/upload")
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    try:
+        contents = await file.read()
+        encoded_content = base64.b64encode(contents).decode('utf-8')
+        # Store or process the file (e.g., save to data dir or send to Langflow)
+        return JSONResponse(content={"filename": file.filename, "content": encoded_content})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+# Include the new router in the FastAPI app
+app.include_router(router)
 
 @app.post("/api/chat/completions")
 async def chat_completion(

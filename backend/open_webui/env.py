@@ -497,3 +497,49 @@ PIP_PACKAGE_INDEX_OPTIONS = os.getenv("PIP_PACKAGE_INDEX_OPTIONS", "").split()
 ####################################
 
 EXTERNAL_PWA_MANIFEST_URL = os.environ.get("EXTERNAL_PWA_MANIFEST_URL")
+
+
+####################################
+# ADDED
+####################################
+
+def _env(name: str, default: str | None = None, *, required: bool = False) -> str | None:
+    val = os.getenv(name, default)
+    if required and (val is None or str(val).strip() == ""):
+        raise RuntimeError(f"Missing required env var: {name}")
+    return val
+
+
+# --- n8n Agent (webhook) ---
+# docker-compose sets N8N_BASE and N8N_AGENT_WEBHOOK for the pipelines service
+N8N_BASE: str = _env("N8N_BASE", "http://n8n:5678")  # internal DNS between containers
+N8N_AGENT_WEBHOOK: str | None = _env("N8N_AGENT_WEBHOOK")  # e.g. /webhook/<id>
+
+# Full URL you can POST to when calling the n8n Agent; None if webhook not set
+N8N_AGENT_URL: str | None = (
+    f"{N8N_BASE.rstrip('/')}{N8N_AGENT_WEBHOOK}" if N8N_AGENT_WEBHOOK else None
+)
+
+# --- Langflow (flow run endpoint) ---
+# docker-compose provides LANGFLOW_BASE, LANGFLOW_FLOW_ID, LANGFLOW_API_KEY, LANGFLOW_TIMEOUT
+LANGFLOW_BASE: str = _env("LANGFLOW_BASE", "http://langflow:7860")
+LANGFLOW_FLOW_ID: str | None = _env("LANGFLOW_FLOW_ID")  # UUID of your flow
+LANGFLOW_API_KEY: str = _env("LANGFLOW_API_KEY", "") or ""  # optional
+LANGFLOW_TIMEOUT: int = int(_env("LANGFLOW_TIMEOUT", "60"))
+
+# Derived full run URL (only built when FLOW_ID is present)
+LANGFLOW_RAG_URL: str | None = (
+    f"{LANGFLOW_BASE.rstrip('/')}/api/v1/run/{LANGFLOW_FLOW_ID}"
+    if LANGFLOW_FLOW_ID
+    else None
+)
+
+# --- Keys used by various tools/pipes ---
+PIPELINES_API_KEY: str | None = _env("PIPELINES_API_KEY")   # used for Open WebUI ↔ pipelines auth
+OPENAI_API_KEY: str | None = _env("OPENAI_API_KEY")         # used by OpenAI-backed pipes/tools
+SERPAPI_KEY: str | None = _env("SERPAPI_KEY")
+PINECONE_API_KEY: str | None = _env("PINECONE_API_KEY")
+
+# Optional: present in compose for langflow, not necessarily for pipelines,
+# but kept here for compatibility if you choose to wire it in later.
+GOOGLE_API_KEY: str | None = _env("GOOGLE_API_KEY")

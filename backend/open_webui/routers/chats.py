@@ -24,6 +24,9 @@ from pydantic import BaseModel
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_permission
 
+from ..utils.n8n import run_n8n_workflow
+from ..utils.langflow import run_langflow_flow
+
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MODELS"])
 
@@ -804,3 +807,59 @@ async def delete_all_tags_by_id(id: str, user=Depends(get_verified_user)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.NOT_FOUND
         )
+
+
+############################
+# SendMessage (Extended for Agents)
+############################
+
+
+class MessageForm(BaseModel):
+    message: str  # Assuming a simple form for the message
+
+@router.post("/chats/{chat_id}/messages")
+def send_message(chat_id: str, form_data: MessageForm, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    message = form_data.message
+    if message.startswith("#agent"):
+        # Parse the message: e.g., #agent n8n {workflow_id} {input_json} or #agent langflow {flow_id} {input_json}
+        # Simple parsing: split by space, assume format #agent service id input...
+        parts = message.split(maxsplit=3)
+        if len(parts) < 3:
+            raise HTTPException(status_code=400, detail="Invalid agent command format. Use #agent [service] [id] [input]")
+
+        _, service, id_, input_str = parts
+        try:
+            input_value = json.loads(input_str) if input_str else {"input": ""}  # Default to empty input
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid input JSON")
+
+        # Fetch and decrypt key
+        key_attr = f"{service}_api_key"
+        encrypted_key = getattr(user, key_attr, None)
+        if not encrypted_key:
+            raise HTTPException(status_code=404, detail=f"{service.capitalize()} API key not found")
+
+        key = decrypt(encrypted_key)
+
+        # Execute based on service
+        if service == "n8n":
+            result = run_n8n_workflow(key, id_, input_value)
+        elif service == "langflow":
+            result = run_langflow_flow(key, id_, input_value)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid service. Use 'n8n' or 'langflow'")
+
+        # Stream or return result (adjust for streaming if needed; here simple return)
+        return {"response": result}
+
+    # Existing chat logic... (e.g., process regular messages with LLM or other handlers)
+    # Assuming the original code for non-agent messages goes here
+    # For example:
+    chat = Chats.get_chat_by_id_and_user_id(chat_id, user.id)
+    if not chat:
+        raise HTTPException(status_code=404, detail=ERROR_MESSAGES.NOT_FOUND)
+    
+    # Simulate existing logic: Save message, process with LLM, etc.
+    # ... (add your original chat processing code)
+    
+    return {"message": "Regular message processed"}  # Placeholder for existing response
