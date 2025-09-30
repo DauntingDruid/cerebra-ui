@@ -112,6 +112,7 @@ services:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - PINECONE_API_KEY=${PINECONE_API_KEY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - LANGFLOW_VARIABLES_TO_GET_FROM_ENVIRONMENT=OPENAI_API_KEY,TAVILY_API_KEY
     volumes:
       - langflow_data:/root/.langflow
       - ./openwebui-data:/app/backend/data
