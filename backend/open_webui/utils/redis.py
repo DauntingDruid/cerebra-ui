@@ -1,6 +1,5 @@
 import socketio
 import redis
-from redis import asyncio as aioredis
 from urllib.parse import urlparse
 
 
@@ -23,15 +22,21 @@ def get_redis_connection(redis_url, redis_sentinels, decode_responses=True):
         redis_config = parse_redis_service_url(redis_url)
         sentinel = redis.sentinel.Sentinel(
             redis_sentinels,
-            port=redis_config["port"],
+            decode_responses=decode_responses,
+            sentinel_kwargs={
+                "username": redis_config["username"],
+                "password": redis_config["password"],
+            },
+        )
+
+        # Get a master connection from Sentinel
+        return sentinel.master_for(
+            redis_config["service"],
             db=redis_config["db"],
             username=redis_config["username"],
             password=redis_config["password"],
             decode_responses=decode_responses,
         )
-
-        # Get a master connection from Sentinel
-        return sentinel.master_for(redis_config["service"])
     else:
         # Standard Redis connection
         return redis.Redis.from_url(redis_url, decode_responses=decode_responses)

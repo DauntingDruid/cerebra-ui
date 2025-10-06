@@ -42,6 +42,8 @@ from open_webui.utils.auth import (
     get_current_user,
     get_password_hash,
 )
+from open_webui.utils.sessions import create_session, delete_session
+from open_webui.config import ENABLE_REDIS_SESSIONS
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.access_control import get_permissions
 
@@ -97,6 +99,19 @@ async def get_session_user(
         samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
         secure=WEBUI_AUTH_COOKIE_SECURE,
     )
+
+    # Create Redis session entry if enabled
+    if ENABLE_REDIS_SESSIONS.value:
+        try:
+            # decode to read jti and exp
+            from open_webui.utils.auth import decode_token
+
+            data = decode_token(token)
+            jti = data.get("jti") if data else None
+            if jti:
+                create_session(jti, user.id, expires_at)
+        except Exception:
+            pass
 
     user_permissions = get_permissions(
         user.id, request.app.state.config.USER_PERMISSIONS
@@ -288,11 +303,10 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
             user = Auths.authenticate_user_by_trusted_header(email)
 
             if user:
+                expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
                 token = create_token(
                     data={"id": user.id},
-                    expires_delta=parse_duration(
-                        request.app.state.config.JWT_EXPIRES_IN
-                    ),
+                    expires_delta=expires_delta,
                 )
 
                 # Set the cookie token
@@ -301,6 +315,20 @@ async def ldap_auth(request: Request, response: Response, form_data: LdapForm):
                     value=token,
                     httponly=True,  # Ensures the cookie is not accessible via JavaScript
                 )
+
+                # Create Redis session entry if enabled
+                if ENABLE_REDIS_SESSIONS.value:
+                    try:
+                        from open_webui.utils.auth import decode_token
+
+                        data = decode_token(token)
+                        jti = data.get("jti") if data else None
+                        exp = data.get("exp") if data else None
+                        if jti:
+                            # if exp present, use it; otherwise pass None
+                            create_session(jti, user.id, int(exp) if exp else None)
+                    except Exception:
+                        pass
 
                 user_permissions = get_permissions(
                     user.id, request.app.state.config.USER_PERMISSIONS
@@ -398,6 +426,18 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             samesite=WEBUI_AUTH_COOKIE_SAME_SITE,
             secure=WEBUI_AUTH_COOKIE_SECURE,
         )
+
+        # Create Redis session entry if enabled
+        if ENABLE_REDIS_SESSIONS.value:
+            try:
+                from open_webui.utils.auth import decode_token
+
+                data = decode_token(token)
+                jti = data.get("jti") if data else None
+                if jti:
+                    create_session(jti, user.id, expires_at)
+            except Exception:
+                pass
 
         user_permissions = get_permissions(
             user.id, request.app.state.config.USER_PERMISSIONS
@@ -501,6 +541,18 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
                 secure=WEBUI_AUTH_COOKIE_SECURE,
             )
 
+            # Create Redis session entry if enabled
+            if ENABLE_REDIS_SESSIONS.value:
+                try:
+                    from open_webui.utils.auth import decode_token
+
+                    data = decode_token(token)
+                    jti = data.get("jti") if data else None
+                    if jti:
+                        create_session(jti, user.id, expires_at)
+                except Exception:
+                    pass
+
             if request.app.state.config.WEBHOOK_URL:
                 post_webhook(
                     request.app.state.WEBUI_NAME,
@@ -537,6 +589,28 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 
 @router.get("/signout")
 async def signout(request: Request, response: Response):
+    # Best-effort revocation using current bearer/cookie token
+    try:
+        auth_header = request.headers.get("authorization")
+        token = None
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1]
+        elif "token" in request.cookies:
+            token = request.cookies.get("token")
+
+        if token and ENABLE_REDIS_SESSIONS.value:
+            from open_webui.utils.auth import decode_token
+
+            data = decode_token(token)
+            jti = data.get("jti") if data else None
+            if jti:
+                try:
+                    delete_session(jti)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
     response.delete_cookie("token")
 
     if ENABLE_OAUTH_SIGNUP.value:
@@ -566,6 +640,44 @@ async def signout(request: Request, response: Response):
                     detail="Failed to sign out from the OpenID provider.",
                 )
 
+    return {"status": True}
+
+
+############################
+# Logout (server-side revoke)
+############################
+
+
+class LogoutResponse(BaseModel):
+    status: bool
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout(request: Request, response: Response):
+    # Best-effort revocation using current bearer/cookie token
+    try:
+        auth_header = request.headers.get("authorization")
+        token = None
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1]
+        elif "token" in request.cookies:
+            token = request.cookies.get("token")
+
+        if token and ENABLE_REDIS_SESSIONS.value:
+            from open_webui.utils.auth import decode_token
+
+            data = decode_token(token)
+            jti = data.get("jti") if data else None
+            if jti:
+                try:
+                    delete_session(jti)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # Always clear cookie
+    response.delete_cookie("token")
     return {"status": True}
 
 

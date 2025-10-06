@@ -322,6 +322,7 @@ from open_webui.config import (
     AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH,
     AppConfig,
     reset_config,
+    run_migrations,
 )
 from open_webui.env import (
     AUDIT_EXCLUDED_PATHS,
@@ -426,6 +427,19 @@ https://github.com/open-webui/open-webui
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_logger()
+    # Run DB migrations at startup to avoid circular import during module import
+    try:
+        run_migrations()
+    except Exception as e:
+        log.error(f"Migration error at startup: {e}")
+
+    # Ensure first-user bootstrap isn't blocked by cached config
+    try:
+        if Users.get_num_users() == 0:
+            app.state.config.ENABLE_SIGNUP = True
+            app.state.config.ENABLE_LOGIN_FORM = True
+    except Exception as e:
+        log.debug(f"Bootstrap signup guard skipped: {e}")
     if RESET_CONFIG_ON_START:
         reset_config()
 

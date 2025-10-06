@@ -1,6 +1,12 @@
 import black
+# Ensuring aiocache config is loaded before any caching is used
+import open_webui.utils.cache
 import logging
 import markdown
+
+from aiocache import cached
+from aiocache import caches
+from datetime import datetime
 
 from open_webui.models.chats import ChatTitleMessagesForm
 from open_webui.config import DATA_DIR, ENABLE_ADMIN_EXPORT
@@ -22,6 +28,22 @@ log.setLevel(SRC_LOG_LEVELS["MAIN"])
 
 router = APIRouter()
 
+@router.get("/test-cache")
+@cached(ttl=30)
+async def test_cache():
+    return {"cached_time": datetime.utcnow().isoformat()}
+
+
+@router.get("/cache/ping")
+async def cache_ping(user=Depends(get_verified_user)):
+    try:
+        cache = caches.get("default")
+        await cache.set("__ping__", "pong", ttl=5)
+        val = await cache.get("__ping__")
+        return {"ok": val == "pong"}
+    except Exception as e:
+        log.debug(f"Cache ping failed: {e}")
+        return {"ok": False}
 
 @router.get("/gravatar")
 async def get_gravatar(email: str, user=Depends(get_verified_user)):

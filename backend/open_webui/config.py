@@ -46,7 +46,7 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter())
 ####################################
 
 
-# Function to run the alembic migrations
+# Function to run the alembic migrations (call from app startup, not import time)
 def run_migrations():
     log.info("Running migrations")
     try:
@@ -63,8 +63,7 @@ def run_migrations():
     except Exception as e:
         log.exception(f"Error running migrations: {e}")
 
-
-run_migrations()
+# IMPORTANT: Do NOT call run_migrations() at import time to avoid circular imports
 
 
 class Config(Base):
@@ -161,9 +160,14 @@ DEFAULT_CONFIG = {
 
 
 def get_config():
-    with get_db() as db:
-        config_entry = db.query(Config).order_by(Config.id.desc()).first()
-        return config_entry.data if config_entry else DEFAULT_CONFIG
+    try:
+        with get_db() as db:
+            config_entry = db.query(Config).order_by(Config.id.desc()).first()
+            return config_entry.data if config_entry else DEFAULT_CONFIG
+    except Exception as e:
+        # DB not ready or table missing; use defaults until migrations finish
+        log.debug(f"get_config fallback to defaults: {e}")
+        return DEFAULT_CONFIG
 
 
 CONFIG_DATA = get_config()

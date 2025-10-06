@@ -16,6 +16,12 @@ from typing import Optional, Union, List, Dict
 from open_webui.models.users import Users
 
 from open_webui.constants import ERROR_MESSAGES
+from open_webui.config import ENABLE_REDIS_SESSIONS, SESSION_SLIDING_TTL
+from open_webui.utils.sessions import (
+    create_session,
+    session_exists,
+    renew_session_ttl,
+)
 from open_webui.env import (
     WEBUI_SECRET_KEY,
     TRUSTED_SIGNATURE_KEY,
@@ -46,8 +52,10 @@ def verify_signature(payload: str, signature: str) -> bool:
     Verifies the HMAC signature of the received payload.
     """
     try:
+        if not TRUSTED_SIGNATURE_KEY:
+            return False
         expected_signature = base64.b64encode(
-            hmac.new(TRUSTED_SIGNATURE_KEY, payload.encode(), hashlib.sha256).digest()
+            hmac.new(TRUSTED_SIGNATURE_KEY.encode(), payload.encode(), hashlib.sha256).digest()
         ).decode()
 
         # Compare securely to prevent timing attacks
@@ -117,6 +125,9 @@ def get_password_hash(password):
 
 def create_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
     payload = data.copy()
+    # inject a JWT ID (jti) if not present
+    if "jti" not in payload:
+        payload["jti"] = str(uuid.uuid4())
 
     if expires_delta:
         expire = datetime.now(UTC) + expires_delta
@@ -206,6 +217,23 @@ def get_current_user(
         )
 
     if data is not None and "id" in data:
+        # If Redis sessions are enabled, verify allowlist by jti
+        jti = data.get("jti")
+        exp = data.get("exp")
+        if ENABLE_REDIS_SESSIONS.value:
+            if not jti or not session_exists(jti):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=ERROR_MESSAGES.INVALID_TOKEN,
+                )
+            # Optional sliding TTL
+            if SESSION_SLIDING_TTL.value and exp:
+                try:
+                    renew_session_ttl(jti, int(
+                        datetime.fromtimestamp(exp, UTC).timestamp()
+                    ))
+                except Exception:
+                    pass
         user = Users.get_user_by_id(data["id"])
         if user is None:
             raise HTTPException(

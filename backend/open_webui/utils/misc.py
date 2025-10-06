@@ -16,6 +16,12 @@ log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MAIN"])
 
 
+from aiocache import cached
+
+@cached(ttl=60)
+async def get_expensive_result(x):
+    return x * x
+
 def deep_update(d, u):
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):

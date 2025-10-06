@@ -23,11 +23,58 @@ from pydantic import BaseModel
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_permission
+from aiocache import caches
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MODELS"])
 
 router = APIRouter()
+FAST_CHAT_COUNT_DEFAULT = 3
+FAST_CHAT_TTL_SECONDS = 60
+
+
+def _fast_cache_key(user_id: str, count: int) -> str:
+    return f"open-webui:user:{user_id}:chats:top:{count}"
+
+
+async def _invalidate_fast_cache(user_id: str, counts: list[int] | None = None):
+    cache = caches.get("default")
+    counts = counts or [FAST_CHAT_COUNT_DEFAULT]
+    for c in counts:
+        try:
+            await cache.delete(_fast_cache_key(user_id, c))
+        except Exception:
+            pass
+
+
+async def _get_fast_chats(user_id: str, count: int) -> list[ChatTitleIdResponse]:
+    count = max(1, min(10, int(count)))
+    cache = caches.get("default")
+    key = _fast_cache_key(user_id, count)
+    try:
+        cached_str = await cache.get(key)
+        if cached_str:
+            data = json.loads(cached_str)
+            return [ChatTitleIdResponse(**item) for item in data]
+    except Exception:
+        pass
+
+    # Fallback to DB, then populate cache
+    items = Chats.get_chat_title_id_list_by_user_id(user_id, limit=count)
+    try:
+        await cache.set(
+            key,
+            json.dumps([i.model_dump() for i in items]),
+            ttl=FAST_CHAT_TTL_SECONDS,
+        )
+    except Exception:
+        pass
+    return items
+
+
+@router.get("/fast", response_model=list[ChatTitleIdResponse])
+async def get_fast_chat_list(user=Depends(get_verified_user), count: Optional[int] = None):
+    return await _get_fast_chats(user.id, count or FAST_CHAT_COUNT_DEFAULT)
 
 ############################
 # GetChatList
@@ -65,6 +112,7 @@ async def delete_all_user_chats(request: Request, user=Depends(get_verified_user
         )
 
     result = Chats.delete_chats_by_user_id(user.id)
+    await _invalidate_fast_cache(user.id)
     return result
 
 
@@ -99,6 +147,7 @@ async def get_user_chat_list_by_user_id(
 async def create_new_chat(form_data: ChatForm, user=Depends(get_verified_user)):
     try:
         chat = Chats.insert_new_chat(user.id, form_data)
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     except Exception as e:
         log.exception(e)
@@ -127,6 +176,7 @@ async def import_chat(form_data: ChatImportForm, user=Depends(get_verified_user)
                 ):
                     Tags.insert_new_tag(tag_name, user.id)
 
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     except Exception as e:
         log.exception(e)
@@ -366,6 +416,7 @@ async def update_chat_by_id(
     if chat:
         updated_chat = {**chat.chat, **form_data.chat}
         chat = Chats.update_chat_by_id(id, updated_chat)
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
@@ -489,7 +540,10 @@ async def delete_chat_by_id(request: Request, id: str, user=Depends(get_verified
                 Tags.delete_tag_by_name_and_user_id(tag, user.id)
 
         result = Chats.delete_chat_by_id(id)
-
+        try:
+            await _invalidate_fast_cache(chat.user_id)
+        except Exception:
+            pass
         return result
     else:
         if not has_permission(
@@ -506,6 +560,7 @@ async def delete_chat_by_id(request: Request, id: str, user=Depends(get_verified
                 Tags.delete_tag_by_name_and_user_id(tag, user.id)
 
         result = Chats.delete_chat_by_id_and_user_id(id, user.id)
+        await _invalidate_fast_cache(user.id)
         return result
 
 
@@ -535,6 +590,7 @@ async def pin_chat_by_id(id: str, user=Depends(get_verified_user)):
     chat = Chats.get_chat_by_id_and_user_id(id, user.id)
     if chat:
         chat = Chats.toggle_chat_pinned_by_id(id)
+        await _invalidate_fast_cache(user.id)
         return chat
     else:
         raise HTTPException(
@@ -565,6 +621,7 @@ async def clone_chat_by_id(
         }
 
         chat = Chats.insert_new_chat(user.id, ChatForm(**{"chat": updated_chat}))
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
@@ -594,6 +651,7 @@ async def clone_shared_chat_by_id(id: str, user=Depends(get_verified_user)):
         }
 
         chat = Chats.insert_new_chat(user.id, ChatForm(**{"chat": updated_chat}))
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
@@ -625,6 +683,7 @@ async def archive_chat_by_id(id: str, user=Depends(get_verified_user)):
                     log.debug(f"inserting tag: {tag_id}")
                     tag = Tags.insert_new_tag(tag_id, user.id)
 
+        await _invalidate_fast_cache(user.id)
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
