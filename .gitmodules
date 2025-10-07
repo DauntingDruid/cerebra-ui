@@ -1,0 +1,4 @@
+[submodule "services/betterauth"]
+	path = services/betterauth
+	url = https://github.com/sadmanali/betterauth-service.git
+	branch = feat/betterauthfinal

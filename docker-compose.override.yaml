@@ -9,7 +9,20 @@ services:
     pull_policy: never
     environment:
       - STATIC_DIR=/app/static
+      - BETTERAUTH_BASE_URL=http://betterauth-service-betterauth-1:4000
+      - BETTERAUTH_URL=http://betterauth-service-betterauth-1:4000
+      - CORS_ALLOW_ORIGIN=http://localhost:3000
+      - WEBUI_SESSION_COOKIE_SAME_SITE=lax
+      - WEBUI_SESSION_COOKIE_SECURE=false
+      - WEBUI_AUTH=true
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro
       - ./static:/app/static:ro
+    networks:
+      - default
+      - cerebra_net
+
+networks:
+  cerebra_net:
+    external: true
