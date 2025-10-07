@@ -82,7 +82,7 @@ Error response from daemon: Conflict. The container name "/redis" is already in 
 **🔧 Solution:**
 Reset: Remove all containers and volumes (if error occurs)
     ```bash
-    cd "/Users/abhishektomar/Desktop/capstone project/cerebra-ui"
+    # from the project root
     docker rm -f redis open-webui ollama || true
     OPEN_WEBUI_PORT=3000 docker compose up -d
     ```
@@ -251,5 +251,47 @@ git push origin feat/[your-name]-[feature]
 # 6. Create Pull Request to pin/0.6.5v when ready
 ```
 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 🔄 *Unified Local Development Workflow* (frontend + backend)
+
+This single workflow builds a local image (so new Python deps work), bind-mounts your backend and static assets for quick iteration, and supports frontend changes reliably.
+
+1) Make sure your deps are declared
+- Frontend deps: `package.json`
+- Backend deps: `backend/requirements.txt` (pin versions)
+
+2) Start (builds local image with increased Node memory)
+```bash
+OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --build --force-recreate
+```
+
+3) Iterate
+- Backend code (Python): saved changes are live via the bind mount
+- Frontend code (Svelte): run this from the **project root** to build UI and restart:
+```bash
+npm run build && OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --force-recreate
+```
+
+4) Verify
+```bash
+docker inspect -f '{{.Config.Image}}' open-webui          # should show cerebra-ui:local
+docker exec -it open-webui python -c "import pkgutil,sys;print('redis' in [m.name for m in pkgutil.iter_modules()])"
+```
+
+5) Theme (optional)
+```js
+localStorage.theme = 'light'; location.reload();
+```
+
+Notes:
+- The override now builds a local image (`cerebra-ui:local`) so new Python deps in `backend/requirements.txt` are installed automatically.
+- Backend and `static/` are bind-mounted for fast iteration. Frontend edits require `npm run build` before a quick `docker compose up -d --force-recreate`.
 
 
+## 🚨 Troubleshooting
+
+### ❌ *Error Case 1: 500 Internal Error (Embedding Download)*
+```bash
+npm ci && NODE_OPTIONS=--max-old-space-size=4096 npm run build && OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --build --force-recreate
+```

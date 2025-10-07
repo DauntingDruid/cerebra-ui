@@ -1,0 +1,15 @@
+services:
+  open-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BUILD_HASH: local
+    image: cerebra-ui:local
+    pull_policy: never
+    environment:
+      - STATIC_DIR=/app/static
+    volumes:
+      - ./build:/app/build:ro
+      - ./backend:/app/backend:ro
+      - ./static:/app/static:ro
