@@ -1,6 +1,8 @@
 # backend/open_webui/routers/betterauth_adapter.py
 import os
 import json
+import psycopg
+from psycopg.rows import dict_row
 import aiohttp
 from urllib.parse import urlencode
 
@@ -11,6 +13,8 @@ from open_webui.env import (
     WEBUI_SESSION_COOKIE_SECURE,
 )
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 router = APIRouter(prefix="/api/v1/auths", tags=["auths"])
 
 BETTERAUTH_BASE_URL = os.getenv(
@@ -18,6 +22,20 @@ BETTERAUTH_BASE_URL = os.getenv(
     "http://betterauth-service-betterauth-1:4000",
 ).rstrip("/")
 
+
+def bootstrap_role(email: str) -> dict:
+    """Return role/status/is_active based on whether this is the first user."""
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            # lock to avoid race conditions
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext('bootstrap_admin'))")
+            cur.execute('SELECT COUNT(*) AS c FROM "user"')
+            n = cur.fetchone()["c"]
+
+            if n == 0:
+                return {"role": "admin", "status": "active", "is_active": True}
+            return {"role": "user", "status": "pending", "is_active": False}
+        
 
 def _string_error(data, fallback="Request failed"):
     """Extract a human-readable error string from various shapes."""
@@ -104,6 +122,24 @@ def _json_ok_with_cookie(user: dict, token: str | None):
     return resp
 
 
+# @router.post("/signin")
+# async def signin(payload: dict, request: Request):
+#     email = (payload or {}).get("email", "").strip().lower()
+#     password = (payload or {}).get("password", "")
+#     if not email or not password:
+#         raise HTTPException(status_code=400, detail="Email and password required")
+
+#     ba = await _post_json("/api/auth/login", {"email": email, "password": password})
+#     token = ba.get("token") or ba.get("access_token")
+#     user = _normalize_user(ba.get("user"), email_fallback=email)
+#     #user["role"] = "admin"
+#     if not token or not user.get("email"):
+#         raise HTTPException(status_code=500, detail="Login payload missing token or user")
+
+#     return _json_ok_with_cookie(user, token)
+
+
+
 @router.post("/signin")
 async def signin(payload: dict, request: Request):
     email = (payload or {}).get("email", "").strip().lower()
@@ -114,9 +150,13 @@ async def signin(payload: dict, request: Request):
     ba = await _post_json("/api/auth/login", {"email": email, "password": password})
     token = ba.get("token") or ba.get("access_token")
     user = _normalize_user(ba.get("user"), email_fallback=email)
-    #user["role"] = "admin"
-    if not token or not user.get("email"):
-        raise HTTPException(status_code=500, detail="Login payload missing token or user")
+
+    # 🔹 Check status
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn, conn.cursor() as cur:
+        cur.execute('SELECT status, is_active, role FROM "user" WHERE email = %s', (email,))
+        u = cur.fetchone()
+        if not u or not u["is_active"] or u["status"] != "active":
+            raise HTTPException(status_code=403, detail="Account pending admin approval")
 
     return _json_ok_with_cookie(user, token)
 
@@ -130,16 +170,48 @@ async def signup(payload: dict, request: Request):
     if not email or not password:
         raise HTTPException(status_code=400, detail="Name, email, and password required")
 
+    # Call BetterAuth signup
     ba = await _post_json(
         "/api/auth/signup",
         {"name": name, "email": email, "password": password, "profile_image_url": profile_image_url},
     )
 
-    # BetterAuth may omit token until email is verified
     token = ba.get("token") or ba.get("access_token")
     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
-    #user["role"] = "admin"
-    return _json_ok_with_cookie(user, token)
+
+    # 🔹 Decide role/status/is_active
+    decide = bootstrap_role(email)
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "user"
+               SET role = %s, status = %s, is_active = %s, updatedAt = NOW()
+             WHERE email = %s''',
+            (decide["role"], decide["status"], decide["is_active"], email)
+        )
+        conn.commit()
+
+    return _json_ok_with_cookie({**user, **decide}, token)
+
+
+# @router.post("/signup")
+# async def signup(payload: dict, request: Request):
+#     name = (payload or {}).get("name") or ""
+#     email = (payload or {}).get("email", "").strip().lower()
+#     password = (payload or {}).get("password", "")
+#     profile_image_url = (payload or {}).get("profile_image_url") or ""
+#     if not email or not password:
+#         raise HTTPException(status_code=400, detail="Name, email, and password required")
+
+#     ba = await _post_json(
+#         "/api/auth/signup",
+#         {"name": name, "email": email, "password": password, "profile_image_url": profile_image_url},
+#     )
+
+#     # BetterAuth may omit token until email is verified
+#     token = ba.get("token") or ba.get("access_token")
+#     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
+#     #user["role"] = "admin"
+#     return _json_ok_with_cookie(user, token)
 
 
 @router.post("/send-verification")
@@ -169,6 +241,28 @@ async def verify_email(payload: dict):
 
     txt = await _get_text("/api/auth/verify", {"token": token, "email": email})
     return JSONResponse({"status": True, "message": txt or "Email verified"})
+
+
+
+@router.patch("/approve")
+async def approve_user(payload: dict):
+    email = (payload or {}).get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email required")
+
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+        cur.execute(
+            '''UPDATE "user"
+               SET status = 'active', is_active = true
+             WHERE email = %s''',
+            (email,)
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        conn.commit()
+
+    return {"status": True, "message": f"User {email} approved"}
+
 
 
 @router.get("/signout")

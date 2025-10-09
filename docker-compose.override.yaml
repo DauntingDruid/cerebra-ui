@@ -15,6 +15,9 @@ services:
       - WEBUI_SESSION_COOKIE_SAME_SITE=lax
       - WEBUI_SESSION_COOKIE_SECURE=false
       - WEBUI_AUTH=true
+      # - WEBUI_ADMIN_EMAILS=tasnimulhasan05@gmail.com
+      # - WEBUI_REGISTRATION_MODE=open          
+      # - WEBUI_REQUIRE_ADMIN_APPROVAL=false    
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro
