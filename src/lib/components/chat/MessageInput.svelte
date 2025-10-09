@@ -1150,7 +1150,7 @@
 											{/if}
 
 											{#if $_user}
-												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || $_user?.permissions?.features?.web_search)}
+												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || ($_user?.permissions?.features?.web_search ?? true))}
 													<Tooltip content={$i18n.t('Search the internet')} placement="top">
 														<button
 															on:click|preventDefault={() => (webSearchEnabled = !webSearchEnabled)}

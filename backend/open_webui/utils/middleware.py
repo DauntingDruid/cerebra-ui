@@ -308,6 +308,21 @@ async def chat_web_search_handler(
     messages = form_data["messages"]
     user_message = get_last_user_message(messages)
 
+    cfg = request.app.state.config
+    frontend_limit = form_data.get("limit")
+    if frontend_limit is None:
+        frontend_limit = int(getattr(cfg, "WEB_SEARCH_RESULT_COUNT", 30) or 30)
+    try:
+        frontend_limit = int(frontend_limit)
+    except Exception:
+        frontend_limit = 30
+    if frontend_limit < 1: frontend_limit = 1
+    if frontend_limit > 100: frontend_limit = 100
+
+    remaining = frontend_limit
+    page_size = form_data.get("page_size") 
+    concurrency = form_data.get("concurrency") 
+
     queries = []
     try:
         res = await generate_queries(
@@ -354,8 +369,14 @@ async def chat_web_search_handler(
         return form_data
 
     all_results = []
+    urls_for_event = []
+
 
     for searchQuery in queries:
+
+        if remaining <= 0:
+            break
+
         await event_emitter(
             {
                 "type": "status",
@@ -369,18 +390,31 @@ async def chat_web_search_handler(
         )
 
         try:
+
+            sf_kwargs = {"query": searchQuery, "limit": remaining}
+            if page_size is not None:
+                sf_kwargs["page_size"] = page_size
+            if concurrency is not None:
+                sf_kwargs["concurrency"] = concurrency
+
             results = await process_web_search(
-                request,
-                SearchForm(
-                    **{
-                        "query": searchQuery,
-                    }
-                ),
-                user=user,
+                request, SearchForm(**sf_kwargs), user=user
             )
 
             if results:
                 all_results.append(results)
+
+                loaded = int(results.get("loaded_count", 0) or 0)
+                remaining -= loaded
+
+                if "filenames" in results:
+                    for u in results["filenames"]:
+                        if len(urls_for_event) < frontend_limit:
+                            urls_for_event.append(u)
+                        else:
+                            break
+
+            
                 files = form_data.get("files", [])
 
                 if results.get("collection_names"):
@@ -423,6 +457,10 @@ async def chat_web_search_handler(
                         )
 
                 form_data["files"] = files
+
+                if remaining <= 0:
+                    break
+                
         except Exception as e:
             log.exception(e)
             await event_emitter(
@@ -450,7 +488,7 @@ async def chat_web_search_handler(
                 "data": {
                     "action": "web_search",
                     "description": "Searched {{count}} sites",
-                    "urls": urls,
+                    "urls": urls_for_event,
                     "done": True,
                 },
             }

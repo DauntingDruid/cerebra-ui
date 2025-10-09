@@ -7,7 +7,25 @@ import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, List, Optional, Sequence, Union
+from typing import Iterator, List, Optional, Sequence, Union, Dict, Any
+
+from pydantic import BaseModel, Field
+
+from urllib.parse import urlparse
+from collections import defaultdict
+
+import asyncio
+import inspect
+
+from open_webui.retrieval.web import (
+    bing, bocha, brave, duckduckgo, exa, google_pse, jina_search, kagi,
+    mojeek, perplexity, searchapi, serpapi, searxng, serper, serply,
+    serpstack, tavily, sougou
+)
+
+from starlette.requests import Request
+from starlette.concurrency import run_in_threadpool
+from open_webui.retrieval.web.utils import get_web_loader, _crawl4ai_fetch_docs
 
 from fastapi import (
     Depends,
@@ -22,17 +40,17 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
 import tiktoken
 
-
-from langchain.text_splitter import RecursiveCharacterTextSplitter, TokenTextSplitter
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter,
+    TokenTextSplitter,
+)
 from langchain_core.documents import Document
 
 from open_webui.models.files import FileModel, Files
 from open_webui.models.knowledge import Knowledges
 from open_webui.storage.provider import Storage
-
 
 from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
 
@@ -40,27 +58,16 @@ from open_webui.retrieval.vector.connector import VECTOR_DB_CLIENT
 from open_webui.retrieval.loaders.main import Loader
 from open_webui.retrieval.loaders.youtube import YoutubeLoader
 
-# Web search engines
+from open_webui.constants import ERROR_MESSAGES
+from open_webui.utils.auth import get_verified_user
+from open_webui.utils.misc import calculate_sha256_string
+from open_webui.config import (
+    DEFAULT_LOCALE,
+    RAG_EMBEDDING_CONTENT_PREFIX,
+    RAG_EMBEDDING_QUERY_PREFIX,
+)
+
 from open_webui.retrieval.web.main import SearchResult
-from open_webui.retrieval.web.utils import get_web_loader
-from open_webui.retrieval.web.brave import search_brave
-from open_webui.retrieval.web.kagi import search_kagi
-from open_webui.retrieval.web.mojeek import search_mojeek
-from open_webui.retrieval.web.bocha import search_bocha
-from open_webui.retrieval.web.duckduckgo import search_duckduckgo
-from open_webui.retrieval.web.google_pse import search_google_pse
-from open_webui.retrieval.web.jina_search import search_jina
-from open_webui.retrieval.web.searchapi import search_searchapi
-from open_webui.retrieval.web.serpapi import search_serpapi
-from open_webui.retrieval.web.searxng import search_searxng
-from open_webui.retrieval.web.serper import search_serper
-from open_webui.retrieval.web.serply import search_serply
-from open_webui.retrieval.web.serpstack import search_serpstack
-from open_webui.retrieval.web.tavily import search_tavily
-from open_webui.retrieval.web.bing import search_bing
-from open_webui.retrieval.web.exa import search_exa
-from open_webui.retrieval.web.perplexity import search_perplexity
-from open_webui.retrieval.web.sougou import search_sougou
 
 from open_webui.retrieval.utils import (
     get_embedding_function,
@@ -91,10 +98,31 @@ from open_webui.env import (
     DEVICE_TYPE,
     DOCKER,
 )
-from open_webui.constants import ERROR_MESSAGES
+
+ENGINES = {
+    "bing": bing,
+    "bocha": bocha,
+    "brave": brave,
+    "duckduckgo": duckduckgo,
+    "exa": exa,
+    "google_pse": google_pse,
+    "jina": jina_search,
+    "kagi": kagi,
+    "mojeek": mojeek,
+    "perplexity": perplexity,
+    "searchapi": searchapi,
+    "serpapi": serpapi,
+    "searxng": searxng,
+    "serper": serper,
+    "serply": serply,
+    "serpstack": serpstack,
+    "tavily": tavily,
+    "sougou": sougou,
+}
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["RAG"])
+
 
 ##########################################
 #
@@ -170,13 +198,24 @@ router = APIRouter()
 class CollectionNameForm(BaseModel):
     collection_name: Optional[str] = None
 
-
-class ProcessUrlForm(CollectionNameForm):
+class ProcessUrlForm(BaseModel):
     url: str
-
+    collection_name: Optional[str] = None
 
 class SearchForm(BaseModel):
     query: str
+    collection_name: Optional[str] = ""
+    limit: Optional[int] = Field(default=None, ge=1, le=100)
+    page_size: Optional[int] = Field(default=None, ge=1, le=10)
+    concurrency: Optional[int] = Field(default=None, ge=1, le=10)
+
+
+# class ProcessUrlForm(CollectionNameForm):
+#     url: str
+
+
+# class SearchForm(BaseModel):
+#     query: str
 
 
 @router.get("/")
@@ -1214,339 +1253,556 @@ def process_youtube_video(
         )
 
 
-@router.post("/process/web")
-def process_web(
-    request: Request, form_data: ProcessUrlForm, user=Depends(get_verified_user)
+ALLOWED_ENGINES = set(ENGINES.keys())
+DEFAULT_ENGINE = (
+    os.getenv("WEB_SEARCH_ENGINE", "google_pse").lower()
+    if os.getenv("WEB_SEARCH_ENGINE", "").lower() in ALLOWED_ENGINES
+    else "google_pse"
+)
+
+PARALLEL_ENGINES = {
+    "exa", "google_pse", "jina", "searchapi", "serper", "serply",
+    "serpstack", "tavily", "serpapi", "bocha"
+}
+
+LEGACY_FN_NAME = {
+    "bing": "search_bing",
+    "brave": "search_brave",
+    "duckduckgo": "search_duckduckgo",
+    "kagi": "search_kagi",
+    "mojeek": "search_mojeek",
+    "perplexity": "search_perplexity",
+    "sougou": "search_sougou",
+    "searxng": "search_searxng",
+
+    "google_pse": "search_google_pse",
+    "exa": "search_exa",
+    "jina": "search_jina",
+    "searchapi": "search_searchapi",
+    "serper": "search_serper",
+    "serply": "search_serply",
+    "serpstack": "search_serpstack",
+    "tavily": "search_tavily",
+    "serpapi": "search_serpapi",
+    "bocha": "search_bocha",
+}
+
+class WebSearchLinksForm(BaseModel):
+    q: str
+    engine: Optional[str] = None
+    limit: int = 30
+    page_size: int = 10
+    max_page_concurrency: int = 3
+    timeout: float = 10.0
+    filter_list: List[str] = Field(default_factory=list, example=[])
+    extra: Dict[str, Any] = Field(default_factory=dict, example={})
+
+def _read_persistent(cfg_item):
+    if hasattr(cfg_item, "get"):
+        try:
+            return cfg_item.get()
+        except Exception:
+            pass
+    if hasattr(cfg_item, "value"):
+        try:
+            return cfg_item.value
+        except Exception:
+            pass
+    return cfg_item
+
+def _effective_engine(config) -> str:
+    raw = _read_persistent(getattr(config, "WEB_SEARCH_ENGINE", None))
+    eng = (raw or "").strip().lower()
+    if eng not in ALLOWED_ENGINES:
+        log.warning("[search] Unsupported engine %r, fallback -> %r", eng, DEFAULT_ENGINE)
+        return DEFAULT_ENGINE
+    return eng
+
+def _filter_kwargs_for_callable(fn, kwargs: dict) -> dict:
+    try:
+        sig = inspect.signature(fn)
+        if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+            return {k: v for k, v in kwargs.items() if v is not None}
+        names = set(sig.parameters.keys())
+        return {k: v for k, v in kwargs.items() if (k in names and v is not None)}
+    except Exception:
+        return {}
+
+def cfg_get(cfg, name: str, default=None):
+    v = getattr(cfg, name, None)
+    if v is None:
+        return default
+    try:
+        return v.get()
+    except Exception:
+        return v
+
+def _build_engine_extras_from_config(cfg, engine: str) -> dict:
+    e = engine.lower().strip()
+    x: Dict[str, Any] = {}
+    if e == "searxng":
+        x["query_url"] = getattr(cfg, "SEARXNG_QUERY_URL", None)
+    elif e == "google_pse":
+        x["api_key"] = getattr(cfg, "GOOGLE_PSE_API_KEY", None)
+        x["engine_id"] = getattr(cfg, "GOOGLE_PSE_ENGINE_ID", None) or getattr(cfg, "GOOGLE_CX", None)
+    elif e == "brave":
+        x["api_key"] = getattr(cfg, "BRAVE_SEARCH_API_KEY", None)
+    elif e == "kagi":
+        x["api_key"] = getattr(cfg, "KAGI_SEARCH_API_KEY", None)
+    elif e == "mojeek":
+        x["api_key"] = getattr(cfg, "MOJEEK_SEARCH_API_KEY", None)
+    elif e == "bocha":
+        x["api_key"] = getattr(cfg, "BOCHA_SEARCH_API_KEY", None)
+    elif e == "serpstack":
+        x["api_key"] = getattr(cfg, "SERPSTACK_API_KEY", None)
+        x["https_enabled"] = getattr(cfg, "SERPSTACK_HTTPS", None)
+    elif e == "serper":
+        x["api_key"] = getattr(cfg, "SERPER_API_KEY", None)
+    elif e == "serply":
+        x["api_key"] = getattr(cfg, "SERPLY_API_KEY", None)
+    elif e == "tavily":
+        x["api_key"] = getattr(cfg, "TAVILY_API_KEY", None)
+        x["extract_depth"] = getattr(cfg, "TAVILY_EXTRACT_DEPTH", None)
+    elif e == "exa":
+        x["api_key"] = getattr(cfg, "EXA_API_KEY", None)
+    elif e == "perplexity":
+        x["api_key"] = getattr(cfg, "PERPLEXITY_API_KEY", None)
+    elif e == "sougou":
+        x["sid"] = getattr(cfg, "SOUGOU_API_SID", None)
+        x["sk"] = getattr(cfg, "SOUGOU_API_SK", None)
+    elif e == "searchapi":
+        x["api_key"] = getattr(cfg, "SEARCHAPI_API_KEY", None)
+        x["engine"] = getattr(cfg, "SEARCHAPI_ENGINE", None)
+        x["endpoint"] = getattr(cfg, "SEARCHAPI_ENDPOINT", None)
+    elif e == "serpapi":
+        x["api_key"] = getattr(cfg, "SERPAPI_API_KEY", None)
+        x["engine"] = getattr(cfg, "SERPAPI_ENGINE", None)
+    elif e == "jina":
+        x["api_key"] = getattr(cfg, "JINA_API_KEY", None)
+    elif e == "bing":
+        x["subscription_key"] = getattr(cfg, "BING_SEARCH_V7_SUBSCRIPTION_KEY", None)
+        x["endpoint"] = getattr(cfg, "BING_SEARCH_V7_ENDPOINT", None)
+        x["mkt"] = str(DEFAULT_LOCALE)
+    return {k: v for k, v in x.items() if v not in (None, "", False)}
+
+def _prepare_call_kwargs_with_concurrency(fn, base: dict) -> dict:
+    sig = inspect.signature(fn)
+    params = sig.parameters
+    allow_kwargs = any(p.kind == p.VAR_KEYWORD for p in params.values())
+    v = base.get("max_page_concurrency", None)
+    call_kwargs = dict(base)
+    if "max_page_concurrency" in call_kwargs:
+        del call_kwargs["max_page_concurrency"]
+    if v is not None:
+        for name in ("max_page_concurrency", "max_variant_concurrency", "max_concurrency", "concurrency"):
+            if allow_kwargs or (name in params):
+                call_kwargs[name] = v
+                break
+    return _filter_kwargs_for_callable(fn, call_kwargs)
+
+async def _maybe_await(fn, **kwargs):
+    if inspect.iscoroutinefunction(fn):
+        return await fn(**kwargs)
+    return await run_in_threadpool(fn, **kwargs)
+
+def _domain_of(u: str) -> str:
+    try:
+        return urlparse(u).netloc.lower()
+    except Exception:
+        return ""
+
+def dedupe_urls(urls: List[str], keep_per_domain: int = 3) -> List[str]:
+    seen = set()
+    buckets = defaultdict(list)
+    out: List[str] = []
+    for u in urls:
+        if not u or u in seen:
+            continue
+        d = _domain_of(u)
+        if len(buckets[d]) < keep_per_domain:
+            buckets[d].append(u)
+            seen.add(u)
+            out.append(u)
+    return out
+
+def _trim_by_tokens(text: str, max_tokens: int, encoding_name: Optional[str]) -> str:
+    try:
+        enc = tiktoken.get_encoding(str(encoding_name)) if encoding_name else tiktoken.get_encoding("cl100k_base")
+        toks = enc.encode(text or "")
+        if len(toks) <= max_tokens:
+            return text or ""
+        return enc.decode(toks[:max_tokens])
+    except Exception:
+        return (text or "")[: max_tokens * 4]
+
+def _sanitize_mode(s: str | None) -> str:
+    v = (s or "").strip().lower()
+    if v in {"", "string", "none", "null", "default", "auto"}:
+        return ""
+    return v
+
+async def _fetch_one_with_crawl4ai_fallback(
+    request: Request,
+    url: str,
+    timeout_s: float,
+    user_agent: str,
+    verify_ssl: bool,
+    rps: int,
+    trust_env: bool,
 ):
     try:
-        collection_name = form_data.collection_name
-        if not collection_name:
-            collection_name = calculate_sha256_string(form_data.url)[:63]
-
-        loader = get_web_loader(
-            form_data.url,
-            verify_ssl=request.app.state.config.ENABLE_WEB_LOADER_SSL_VERIFICATION,
-            requests_per_second=request.app.state.config.WEB_SEARCH_CONCURRENT_REQUESTS,
+        docs = await _crawl4ai_fetch_docs(
+            request, [url], timeout_sec=timeout_s, concurrency=1, user_agent=user_agent
         )
-        docs = loader.load()
-        content = " ".join([doc.page_content for doc in docs])
+        if docs and docs[0] and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
+            return docs[0]
+        raise RuntimeError("crawl4ai returned empty doc")
+    except Exception as e:
+        log.debug("[crawl4ai] fail url=%s err=%s -> fallback to simple loader", url, e)
 
-        log.debug(f"text_content: {content}")
+    try:
+        loader = get_web_loader([url], verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
+        docs = await loader.aload()
+        if docs and docs[0] and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
+            return docs[0]
+        raise RuntimeError("simple loader returned empty doc")
+    except Exception as e:
+        log.debug("[simple loader] fail url=%s err=%s", url, e)
+        return None
 
-        if not request.app.state.config.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL:
-            save_docs_to_vector_db(
-                request, docs, collection_name, overwrite=True, user=user
+async def _engine_search_links(
+    request: Request,
+    engine: str,
+    q: str,
+    *,
+    limit: int,
+    page_size: int,
+    timeout: float,
+    max_page_concurrency: int,
+    filter_list: List[str],
+    extra: Optional[Dict[str, Any]] = None,
+) -> List[SearchResult]:
+    mod = ENGINES[engine]
+    extras_cfg = _build_engine_extras_from_config(request.app.state.config, engine)
+    extras = {**extras_cfg, **(extra or {})}
+
+    if engine not in PARALLEL_ENGINES:
+        max_page_concurrency = 1
+
+    fn_many = getattr(mod, "search_many_links", None)
+    if engine in PARALLEL_ENGINES and callable(fn_many):
+        base = dict(q=q, limit=limit, timeout=timeout, page_size=page_size,
+                    max_page_concurrency=max_page_concurrency,
+                    filter_list=filter_list, **extras)
+        call_kwargs = _prepare_call_kwargs_with_concurrency(fn_many, base)
+        return await _maybe_await(fn_many, **call_kwargs)
+    
+    legacy_name = LEGACY_FN_NAME.get(engine)
+    fn = getattr(mod, legacy_name, None) if legacy_name else None
+    if fn is None and callable(fn_many):
+
+        base = dict(q=q, limit=limit, timeout=timeout, page_size=page_size,
+                    max_page_concurrency=1, filter_list=filter_list, **extras)
+        call_kwargs = _prepare_call_kwargs_with_concurrency(fn_many, base)
+        return await _maybe_await(fn_many, **call_kwargs)
+
+    if fn is None:
+        raise RuntimeError(f"Engine '{engine}' doesn't provide search_many_links or legacy search function")
+
+    legacy_kwargs = dict(
+        query=q,
+        q=q,
+        count=limit,
+        limit=limit,
+        page_size=page_size,
+        timeout=timeout,
+        filter_list=filter_list,
+        **extras,
+    )
+    legacy_kwargs = _filter_kwargs_for_callable(fn, legacy_kwargs)
+    return await _maybe_await(fn, **legacy_kwargs)
+
+async def search_web_async(
+    request: Request,
+    engine: str,
+    query: str,
+    *,
+    limit: Optional[int] = None,
+    page_size: Optional[int] = None,
+    max_conc: Optional[int] = None,
+) -> List[SearchResult]:
+    cfg = request.app.state.config
+    if engine not in ENGINES:
+        log.warning("Unsupported engine %r; fallback to %r", engine, DEFAULT_ENGINE)
+        engine = DEFAULT_ENGINE
+
+    timeout = 10.0
+
+    if limit is None:
+        limit = int(cfg_get(cfg, "WEB_SEARCH_RESULT_COUNT", 30))
+    if page_size is None:
+        page_size = int(cfg_get(cfg, "WEB_SEARCH_PAGE_SIZE", 10))
+    if max_conc is None:
+        max_conc = int(cfg_get(cfg, "WEB_SEARCH_CONCURRENT_REQUESTS", 3))
+
+    limit = max(1, min(int(limit), 100))
+    page_size = max(1, min(int(page_size), 10))
+    max_conc = max(1, min(int(max_conc), 10))
+    filter_list = request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST
+
+    expected_pages = (limit + page_size - 1) // page_size
+    log.info("[search_async] engine=%s q=%r limit=%s page_size=%s -> pages=%s max_conc=%s",
+             engine, query, limit, page_size, expected_pages, max_conc)
+
+    results = await _engine_search_links(
+        request, engine, query,
+        limit=limit, page_size=page_size, timeout=timeout,
+        max_page_concurrency=max_conc, filter_list=filter_list, extra=None
+    )
+
+    if len(results) > limit:
+        results = results[:limit]
+    log.info("[search_async] engine=%s got %s links (limit=%s)", engine, len(results), limit)
+    return results
+
+@router.post("/process/web")
+async def process_web(request: Request, form_data: ProcessUrlForm, user=Depends(get_verified_user)):
+    try:
+        collection_name = form_data.collection_name or calculate_sha256_string(form_data.url)[:63]
+
+        try:
+            cfg_mode_raw = request.app.state.config.WEB_LOADER_ENGINE.get()
+        except Exception:
+            cfg_mode_raw = getattr(request.app.state.config, "WEB_LOADER_ENGINE", None)
+        cfg_mode = _sanitize_mode(cfg_mode_raw)
+        env_mode = _sanitize_mode(os.getenv("WEB_LOADER_ENGINE"))
+        mode = cfg_mode or env_mode or "crawl4ai"
+        use_crawl4ai = (mode == "crawl4ai")
+
+        if use_crawl4ai:
+            docs = await _crawl4ai_fetch_docs(
+                request,
+                [form_data.url],
+                timeout_sec=float(request.app.state.config.PLAYWRIGHT_TIMEOUT or 15000) / 1000.0,
+                concurrency=int(request.app.state.config.WEB_SEARCH_CONCURRENT_REQUESTS or 3),
+                user_agent="Open WebUI (Crawl4AI)",
             )
         else:
+            loader = get_web_loader(
+                form_data.url,
+                verify_ssl=request.app.state.config.ENABLE_WEB_LOADER_SSL_VERIFICATION,
+                requests_per_second=request.app.state.config.WEB_SEARCH_CONCURRENT_REQUESTS,
+            )
+            docs = await loader.aload()
+
+        content = " ".join([doc.page_content for doc in docs if doc and getattr(doc, "page_content", None)])
+
+        if not request.app.state.config.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL:
+            await run_in_threadpool(save_docs_to_vector_db, request, docs, collection_name, True, user)
+        else:
             collection_name = None
+
+        if request.app.state.config.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL and (use_crawl4ai):
+            return {
+                "status": True,
+                "collection_name": None,
+                "filename": form_data.url,
+                "loaded_count": len(docs),
+                "docs": [
+                    {
+                        "title": d.metadata.get("title"),
+                        "source": d.metadata.get("source"),
+                        "loader": d.metadata.get("loader"),
+                        "structured": d.metadata.get("structured"),
+                        "content": (d.page_content or "")[:300] + "...",
+                    }
+                    for d in docs if d
+                ],
+            }
 
         return {
             "status": True,
             "collection_name": collection_name,
             "filename": form_data.url,
             "file": {
-                "data": {
-                    "content": content,
-                },
-                "meta": {
-                    "name": form_data.url,
-                    "source": form_data.url,
-                },
+                "data": {"content": content},
+                "meta": {"name": form_data.url, "source": form_data.url},
             },
         }
     except Exception as e:
         log.exception(e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ERROR_MESSAGES.DEFAULT(e),
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.DEFAULT(e))
 
+@router.post("/process/web/search_links")
+async def process_web_search_links(request: Request, form: WebSearchLinksForm, user=Depends(get_verified_user)):
+    cfg_engine = form.engine or _read_persistent(getattr(request.app.state.config, "WEB_SEARCH_ENGINE", None))
+    engine = (cfg_engine or "").strip().lower()
+    if engine not in ALLOWED_ENGINES:
+        log.warning("[search_links] Unsupported engine %r, fallback -> %r", engine, DEFAULT_ENGINE)
+        engine = DEFAULT_ENGINE
 
-def search_web(request: Request, engine: str, query: str) -> list[SearchResult]:
-    """Search the web using a search engine and return the results as a list of SearchResult objects.
-    Will look for a search engine API key in environment variables in the following order:
-    - SEARXNG_QUERY_URL
-    - GOOGLE_PSE_API_KEY + GOOGLE_PSE_ENGINE_ID
-    - BRAVE_SEARCH_API_KEY
-    - KAGI_SEARCH_API_KEY
-    - MOJEEK_SEARCH_API_KEY
-    - BOCHA_SEARCH_API_KEY
-    - SERPSTACK_API_KEY
-    - SERPER_API_KEY
-    - SERPLY_API_KEY
-    - TAVILY_API_KEY
-    - EXA_API_KEY
-    - PERPLEXITY_API_KEY
-    - SOUGOU_API_SID + SOUGOU_API_SK
-    - SEARCHAPI_API_KEY + SEARCHAPI_ENGINE (by default `google`)
-    - SERPAPI_API_KEY + SERPAPI_ENGINE (by default `google`)
-    Args:
-        query (str): The query to search for
-    """
-
-    # TODO: add playwright to search the web
-    if engine == "searxng":
-        if request.app.state.config.SEARXNG_QUERY_URL:
-            return search_searxng(
-                request.app.state.config.SEARXNG_QUERY_URL,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No SEARXNG_QUERY_URL found in environment variables")
-    elif engine == "google_pse":
-        if (
-            request.app.state.config.GOOGLE_PSE_API_KEY
-            and request.app.state.config.GOOGLE_PSE_ENGINE_ID
-        ):
-            return search_google_pse(
-                request.app.state.config.GOOGLE_PSE_API_KEY,
-                request.app.state.config.GOOGLE_PSE_ENGINE_ID,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception(
-                "No GOOGLE_PSE_API_KEY or GOOGLE_PSE_ENGINE_ID found in environment variables"
-            )
-    elif engine == "brave":
-        if request.app.state.config.BRAVE_SEARCH_API_KEY:
-            return search_brave(
-                request.app.state.config.BRAVE_SEARCH_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No BRAVE_SEARCH_API_KEY found in environment variables")
-    elif engine == "kagi":
-        if request.app.state.config.KAGI_SEARCH_API_KEY:
-            return search_kagi(
-                request.app.state.config.KAGI_SEARCH_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No KAGI_SEARCH_API_KEY found in environment variables")
-    elif engine == "mojeek":
-        if request.app.state.config.MOJEEK_SEARCH_API_KEY:
-            return search_mojeek(
-                request.app.state.config.MOJEEK_SEARCH_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No MOJEEK_SEARCH_API_KEY found in environment variables")
-    elif engine == "bocha":
-        if request.app.state.config.BOCHA_SEARCH_API_KEY:
-            return search_bocha(
-                request.app.state.config.BOCHA_SEARCH_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No BOCHA_SEARCH_API_KEY found in environment variables")
-    elif engine == "serpstack":
-        if request.app.state.config.SERPSTACK_API_KEY:
-            return search_serpstack(
-                request.app.state.config.SERPSTACK_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-                https_enabled=request.app.state.config.SERPSTACK_HTTPS,
-            )
-        else:
-            raise Exception("No SERPSTACK_API_KEY found in environment variables")
-    elif engine == "serper":
-        if request.app.state.config.SERPER_API_KEY:
-            return search_serper(
-                request.app.state.config.SERPER_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No SERPER_API_KEY found in environment variables")
-    elif engine == "serply":
-        if request.app.state.config.SERPLY_API_KEY:
-            return search_serply(
-                request.app.state.config.SERPLY_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No SERPLY_API_KEY found in environment variables")
-    elif engine == "duckduckgo":
-        return search_duckduckgo(
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-            request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
+    try:
+        filter_list = form.filter_list or request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST
+        results = await _engine_search_links(
+            request, engine, form.q,
+            limit=int(form.limit), page_size=int(form.page_size),
+            timeout=float(form.timeout),
+            max_page_concurrency=int(form.max_page_concurrency),
+            filter_list=filter_list,
+            extra=form.extra or {},
         )
-    elif engine == "tavily":
-        if request.app.state.config.TAVILY_API_KEY:
-            return search_tavily(
-                request.app.state.config.TAVILY_API_KEY,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No TAVILY_API_KEY found in environment variables")
-    elif engine == "searchapi":
-        if request.app.state.config.SEARCHAPI_API_KEY:
-            return search_searchapi(
-                request.app.state.config.SEARCHAPI_API_KEY,
-                request.app.state.config.SEARCHAPI_ENGINE,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No SEARCHAPI_API_KEY found in environment variables")
-    elif engine == "serpapi":
-        if request.app.state.config.SERPAPI_API_KEY:
-            return search_serpapi(
-                request.app.state.config.SERPAPI_API_KEY,
-                request.app.state.config.SERPAPI_ENGINE,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception("No SERPAPI_API_KEY found in environment variables")
-    elif engine == "jina":
-        return search_jina(
-            request.app.state.config.JINA_API_KEY,
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-        )
-    elif engine == "bing":
-        return search_bing(
-            request.app.state.config.BING_SEARCH_V7_SUBSCRIPTION_KEY,
-            request.app.state.config.BING_SEARCH_V7_ENDPOINT,
-            str(DEFAULT_LOCALE),
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-            request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-        )
-    elif engine == "exa":
-        return search_exa(
-            request.app.state.config.EXA_API_KEY,
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-            request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-        )
-    elif engine == "perplexity":
-        return search_perplexity(
-            request.app.state.config.PERPLEXITY_API_KEY,
-            query,
-            request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-            request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-        )
-    elif engine == "sougou":
-        if (
-            request.app.state.config.SOUGOU_API_SID
-            and request.app.state.config.SOUGOU_API_SK
-        ):
-            return search_sougou(
-                request.app.state.config.SOUGOU_API_SID,
-                request.app.state.config.SOUGOU_API_SK,
-                query,
-                request.app.state.config.WEB_SEARCH_RESULT_COUNT,
-                request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST,
-            )
-        else:
-            raise Exception(
-                "No SOUGOU_API_SID or SOUGOU_API_SK found in environment variables"
-            )
-    else:
-        raise Exception("No search engine API key found in environment variables")
-
+        return {
+            "status": True,
+            "engine": engine,
+            "count": len(results),
+            "results": [r.dict() if hasattr(r, "dict") else r for r in results],
+        }
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.WEB_SEARCH_ERROR(e))
 
 @router.post("/process/web/search")
-async def process_web_search(
-    request: Request, form_data: SearchForm, user=Depends(get_verified_user)
-):
+async def process_web_search(request: Request, form_data: SearchForm, user=Depends(get_verified_user)):
+    engine = _effective_engine(request.app.state.config)
+    log.info("[search] engine=%r q=%r limit=%s page_size=%s conc=%s",
+             engine, form_data.query, form_data.limit, form_data.page_size, form_data.concurrency)
+
+    eff_limit = int(form_data.limit) if form_data.limit is not None else int(getattr(request.app.state.config, "WEB_SEARCH_RESULT_COUNT", 30) or 30)
+    if eff_limit < 1: eff_limit = 1
+    if eff_limit > 100: eff_limit = 100
+
     try:
-        logging.info(
-            f"trying to web search with {request.app.state.config.WEB_SEARCH_ENGINE, form_data.query}"
-        )
-        web_results = search_web(
-            request, request.app.state.config.WEB_SEARCH_ENGINE, form_data.query
+        web_results = await search_web_async(
+            request, engine, form_data.query,
+            limit=eff_limit,
+            page_size=form_data.page_size, 
+            max_conc=form_data.concurrency  
         )
     except Exception as e:
         log.exception(e)
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ERROR_MESSAGES.WEB_SEARCH_ERROR(e),
-        )
-
-    log.debug(f"web_results: {web_results}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.WEB_SEARCH_ERROR(e))
 
     try:
         urls = [result.link for result in web_results]
-        loader = get_web_loader(
-            urls,
-            verify_ssl=request.app.state.config.ENABLE_WEB_LOADER_SSL_VERIFICATION,
-            requests_per_second=request.app.state.config.WEB_SEARCH_CONCURRENT_REQUESTS,
-            trust_env=request.app.state.config.WEB_SEARCH_TRUST_ENV,
-        )
-        docs = await loader.aload()
-        urls = [
-            doc.metadata["source"] for doc in docs
-        ]  # only keep URLs which could be retrieved
+        keep_per_domain = int(getattr(request.app.state.config, "WEB_SEARCH_KEEP_PER_DOMAIN", 0) or 3)
+        urls = dedupe_urls(urls, keep_per_domain=keep_per_domain)
+        top_k_fetch = int(getattr(request.app.state.config, "WEB_FETCH_TOP_K", 0) or 15)
+        urls = urls[:min(top_k_fetch, eff_limit)]
+        if not urls:
+            return {"status": True, "collection_name": None, "filenames": [], "loaded_count": 0, "docs": []}
 
-        if request.app.state.config.BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL:
+        cfg = request.app.state.config
+        bypass = bool(
+            getattr(cfg, "BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL", None)
+            if getattr(cfg, "BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL", None) is not None
+            else getattr(cfg, "BYPASS_EMBEDDING_AND_RETRIEVAL", False)
+        )
+
+        try:
+            cfg_mode_raw = cfg.WEB_LOADER_ENGINE.get()
+        except Exception:
+            cfg_mode_raw = getattr(cfg, "WEB_LOADER_ENGINE", None)
+        cfg_mode = _sanitize_mode(cfg_mode_raw)
+        env_mode = _sanitize_mode(os.getenv("WEB_LOADER_ENGINE"))
+        mode = cfg_mode or env_mode or "crawl4ai"
+        use_crawl4ai = (mode == "crawl4ai")
+
+        timeout_s = max(5.0, float(getattr(cfg, "PLAYWRIGHT_TIMEOUT", 15000)) / 1000.0)
+        verify_ssl = bool(getattr(cfg, "ENABLE_WEB_LOADER_SSL_VERIFICATION", True))
+        trust_env = bool(getattr(cfg, "WEB_SEARCH_TRUST_ENV", False))
+        concurrency = max(1, int(form_data.concurrency) if form_data.concurrency is not None else int(getattr(cfg, "WEB_SEARCH_CONCURRENT_REQUESTS", 3) or 3))
+        rps = concurrency
+
+        if use_crawl4ai:
+            sem = asyncio.Semaphore(concurrency)
+            async def _guarded(u: str):
+                async with sem:
+                    return await _fetch_one_with_crawl4ai_fallback(
+                        request=request, url=u, timeout_s=timeout_s,
+                        user_agent="Open WebUI (Crawl4AI)",
+                        verify_ssl=verify_ssl, rps=rps, trust_env=trust_env,
+                    )
+            docs = await asyncio.gather(*(_guarded(u) for u in urls))
+            docs = [d for d in docs if d and getattr(d, "metadata", None) and d.metadata.get("source")]
+        else:
+            loader = get_web_loader(urls, verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
+            docs = await loader.aload()
+            docs = [d for d in docs if d and getattr(d, "metadata", None) and d.metadata.get("source")]
+
+        if not docs:
+            return {"status": True, "collection_name": None, "filenames": [], "loaded_count": 0, "docs": []}
+
+        if bypass:
+            if len(docs) > eff_limit:
+                docs = docs[:eff_limit]
             return {
                 "status": True,
                 "collection_name": None,
-                "filenames": urls,
-                "docs": [
-                    {
-                        "content": doc.page_content,
-                        "metadata": doc.metadata,
-                    }
-                    for doc in docs
-                ],
+                "filenames": [d.metadata["source"] for d in docs],
+                "docs": [{"content": d.page_content, "metadata": d.metadata} for d in docs],
                 "loaded_count": len(docs),
             }
-        else:
-            collection_names = []
-            for doc_idx, doc in enumerate(docs):
-                if doc and doc.page_content:
-                    collection_name = f"web-search-{calculate_sha256_string(form_data.query + '-' + urls[doc_idx])}"[
-                        :63
-                    ]
 
-                    collection_names.append(collection_name)
-                    await run_in_threadpool(
-                        save_docs_to_vector_db,
-                        request,
-                        [doc],
-                        collection_name,
-                        overwrite=True,
-                        user=user,
-                    )
+        enable_embed_filter = bool(getattr(cfg, "ENABLE_WEB_INLINE_EMBED_FILTER", False))
+        vector_topk = int(getattr(cfg, "WEB_INLINE_VECTOR_TOPK", 0) or 30)
+        encoding_name = getattr(cfg, "TIKTOKEN_ENCODING_NAME", None)
+        max_doc_tokens = int(getattr(cfg, "WEB_INLINE_EMBED_MAX_TOKENS", 0) or 1200)
 
-            return {
-                "status": True,
-                "collection_names": collection_names,
-                "filenames": urls,
-                "loaded_count": len(docs),
-            }
+        rerank_candidates = docs
+        if enable_embed_filter and getattr(request.app.state, "EMBEDDING_FUNCTION", None):
+            try:
+                qv = request.app.state.EMBEDDING_FUNCTION(form_data.query, prefix=RAG_EMBEDDING_QUERY_PREFIX, user=user)
+                texts_for_embed = [
+                    _trim_by_tokens(d.page_content or "", max_doc_tokens, encoding_name).replace("\n", " ")
+                    for d in docs
+                ]
+                doc_vecs = request.app.state.EMBEDDING_FUNCTION(
+                    texts_for_embed, prefix=RAG_EMBEDDING_CONTENT_PREFIX, user=user
+                )
+                import math
+                def _cos(a, b):
+                    dot = sum(x*y for x, y in zip(a, b))
+                    na = math.sqrt(sum(x*x for x in a)) or 1e-9
+                    nb = math.sqrt(sum(x*x for x in b)) or 1e-9
+                    return dot/(na*nb)
+                scored = [(i, _cos(qv, dv)) for i, dv in enumerate(doc_vecs)]
+                scored.sort(key=lambda x: x[1], reverse=True)
+                keep_idx = [i for i, _ in scored[:min(vector_topk, len(scored))]]
+                rerank_candidates = [docs[i] for i in keep_idx]
+            except Exception as _e:
+                log.warning("embed-filter failed, fallback no-filter: %s", _e)
+                rerank_candidates = docs
+
+        enable_inline_rerank = bool(getattr(cfg, "ENABLE_WEB_INLINE_RERANK", False))
+        rerank_topn = int(getattr(cfg, "WEB_INLINE_RERANK_TOPN", 0) or 10)
+        rf = getattr(request.app.state, "rf", None)
+
+        final_docs = rerank_candidates
+        if enable_inline_rerank and rf is not None:
+            pairs = [(form_data.query, _trim_by_tokens(d.page_content or "", max_doc_tokens, encoding_name))
+                     for d in rerank_candidates]
+            def _score_sync():
+                try: return list(rf.predict(pairs))
+                except Exception: return list(rf.score(pairs))
+            scores = await run_in_threadpool(_score_sync)
+            order = sorted(range(len(rerank_candidates)), key=lambda i: scores[i], reverse=True)
+            final_docs = [rerank_candidates[i] for i in order[:min(rerank_topn, len(order))]]
+
+        if len(final_docs) > eff_limit:
+            final_docs = final_docs[:eff_limit]
+        urls_final = [d.metadata["source"] for d in final_docs]
+        collection_names = []
+        for i, doc in enumerate(final_docs):
+            if not doc or not doc.page_content:
+                continue
+            cname = f"web-search-{calculate_sha256_string(form_data.query + '-' + urls_final[i])}"[:63]
+            collection_names.append(cname)
+            await run_in_threadpool(save_docs_to_vector_db, request, [doc], cname, overwrite=True, user=user)
+
+        return {"status": True, "collection_names": collection_names, "filenames": urls_final, "loaded_count": len(final_docs)}
     except Exception as e:
         log.exception(e)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=ERROR_MESSAGES.DEFAULT(e),
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERROR_MESSAGES.DEFAULT(e))
 
 
 class QueryDocForm(BaseModel):

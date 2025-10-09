@@ -1,69 +1,115 @@
-import logging
-from typing import Optional
+import os, httpx
+from typing import List, Dict, Optional
+from .engine_template import template_paged_engine
 
-import requests
-from open_webui.retrieval.web.main import SearchResult, get_filtered_results
-from open_webui.env import SRC_LOG_LEVELS
+ENGINE_NAME = "google_pse"
+DEFAULT_ENDPOINT = os.getenv("GOOGLE_PSE_ENDPOINT", "https://www.googleapis.com/customsearch/v1")
 
-log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["RAG"])
+def _env_api_key() -> Optional[str]:
+    return os.getenv("GOOGLE_PSE_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
+def _env_cx() -> Optional[str]:
+    return os.getenv("GOOGLE_PSE_ENGINE_ID") or os.getenv("GOOGLE_CX")
 
-def search_google_pse(
+async def _fetch_page_impl(
+    client: httpx.AsyncClient,
+    q: str,
+    page: int,
+    page_size: int,
+    timeout: float,
+    *,
     api_key: str,
-    search_engine_id: str,
-    query: str,
-    count: int,
-    filter_list: Optional[list[str]] = None,
-) -> list[SearchResult]:
-    """Search using Google's Programmable Search Engine API and return the results as a list of SearchResult objects.
-    Handles pagination for counts greater than 10.
+    cx: str,
+    endpoint: str,
+) -> List[Dict[str, str]]:
+    if not api_key:
+        raise RuntimeError(f"[{ENGINE_NAME}] GOOGLE_PSE_API_KEY (or GOOGLE_API_KEY) not set")
+    if not cx:
+        raise RuntimeError(f"[{ENGINE_NAME}] GOOGLE_PSE_ENGINE_ID (or GOOGLE_CX) not set")
 
-    Args:
-        api_key (str): A Programmable Search Engine API key
-        search_engine_id (str): A Programmable Search Engine ID
-        query (str): The query to search for
-        count (int): The number of results to return (max 100, as PSE max results per query is 10 and max page is 10)
-        filter_list (Optional[list[str]], optional): A list of keywords to filter out from results. Defaults to None.
+    page = max(1, int(page))
+    page_size = max(1, min(int(page_size), 10))
 
-    Returns:
-        list[SearchResult]: A list of SearchResult objects.
-    """
-    url = "https://www.googleapis.com/customsearch/v1"
-    headers = {"Content-Type": "application/json"}
-    all_results = []
-    start_index = 1  # Google PSE start parameter is 1-based
+    start = 1 + (page - 1) * page_size
+    if start > 100:
+        return []
 
-    while count > 0:
-        num_results_this_page = min(count, 10)  # Google PSE max results per page is 10
-        params = {
-            "cx": search_engine_id,
-            "q": query,
-            "key": api_key,
-            "num": num_results_this_page,
-            "start": start_index,
-        }
-        response = requests.request("GET", url, headers=headers, params=params)
-        response.raise_for_status()
-        json_response = response.json()
-        results = json_response.get("items", [])
-        if results:  # check if results are returned. If not, no more pages to fetch.
-            all_results.extend(results)
-            count -= len(
-                results
-            )  # Decrement count by the number of results fetched in this page.
-            start_index += 10  # Increment start index for the next page
-        else:
-            break  # No more results from Google PSE, break the loop
+    params = {
+        "key": api_key,
+        "cx": cx,
+        "q": q,
+        "num": page_size,
+        "start": start,
+        "fields": "items(title,link,snippet)",
+    }
 
-    if filter_list:
-        all_results = get_filtered_results(all_results, filter_list)
+    r = await client.get(endpoint, params=params, timeout=timeout)
 
-    return [
-        SearchResult(
-            link=result["link"],
-            title=result.get("title"),
-            snippet=result.get("snippet"),
+    if r.status_code in (401, 403):
+        detail = ""
+        try:
+            detail = (r.json().get("error", {}) or {}).get("message", "")
+        except Exception:
+            pass
+        raise RuntimeError(f"[{ENGINE_NAME}] Unauthorized/Forbidden: {detail or r.reason_phrase}")
+    if r.status_code == 429:
+        raise RuntimeError(f"[{ENGINE_NAME}] Rate limited (429)")
+    r.raise_for_status()
+
+    data = r.json() or {}
+    items = data.get("items") or []
+
+    out: List[Dict[str, str]] = []
+    for it in items:
+        url = (it.get("link") or "").strip()
+        if not url:
+            continue
+        out.append({
+            "title": it.get("title") or url,
+            "url": url,
+            "snippet": it.get("snippet") or "",
+            "source": ENGINE_NAME,
+        })
+    return out
+
+MAX_LIMIT = 100
+MAX_CONCURRENCY = 10
+DEFAULT_LIMIT = 30 
+DEFAULT_CONCURRENCY = 3 
+
+async def search_many_links(
+    q: str,
+    limit: int = DEFAULT_LIMIT,
+    timeout: float = 10.0,
+    page_size: int = 10,
+    max_page_concurrency: int = DEFAULT_CONCURRENCY,
+    filter_list: Optional[List[str]] = None,
+    *,
+    api_key: Optional[str] = None,
+    engine_id: Optional[str] = None,
+    cx: Optional[str] = None,
+    endpoint: Optional[str] = None,
+):
+    limit = max(1, min(int(limit), MAX_LIMIT)) 
+    max_page_concurrency = max(1, min(int(max_page_concurrency), MAX_CONCURRENCY)) 
+
+    key = (api_key or _env_api_key() or "").strip()
+    cx_id = (engine_id or cx or _env_cx() or "").strip()
+    ep = (endpoint or DEFAULT_ENDPOINT).strip()
+
+    async def _fetch(client, q_, page_, size_, t_):
+        return await _fetch_page_impl(
+            client, q_, page_, size_, t_,
+            api_key=key, cx=cx_id, endpoint=ep
         )
-        for result in all_results
-    ]
+
+    return await template_paged_engine(
+        q=q,
+        limit=limit,
+        page_size=page_size,
+        fetch_page_fn=_fetch,
+        engine_name=ENGINE_NAME,
+        timeout=timeout,
+        max_page_concurrency=max_page_concurrency,
+        filter_list=filter_list,
+    )

@@ -2034,13 +2034,13 @@ YOUTUBE_LOADER_PROXY_URL = PersistentConfig(
 ENABLE_WEB_SEARCH = PersistentConfig(
     "ENABLE_WEB_SEARCH",
     "rag.web.search.enable",
-    os.getenv("ENABLE_WEB_SEARCH", "False").lower() == "true",
+    os.getenv("ENABLE_WEB_SEARCH", "True").lower() == "true",
 )
 
 WEB_SEARCH_ENGINE = PersistentConfig(
     "WEB_SEARCH_ENGINE",
     "rag.web.search.engine",
-    os.getenv("WEB_SEARCH_ENGINE", ""),
+    os.getenv("WEB_SEARCH_ENGINE", "google_pse"),
 )
 
 BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = PersistentConfig(
@@ -2053,7 +2053,7 @@ BYPASS_WEB_SEARCH_EMBEDDING_AND_RETRIEVAL = PersistentConfig(
 WEB_SEARCH_RESULT_COUNT = PersistentConfig(
     "WEB_SEARCH_RESULT_COUNT",
     "rag.web.search.result_count",
-    int(os.getenv("WEB_SEARCH_RESULT_COUNT", "3")),
+    int(os.getenv("WEB_SEARCH_RESULT_COUNT", "15")),
 )
 
 
@@ -2072,13 +2072,13 @@ WEB_SEARCH_DOMAIN_FILTER_LIST = PersistentConfig(
 WEB_SEARCH_CONCURRENT_REQUESTS = PersistentConfig(
     "WEB_SEARCH_CONCURRENT_REQUESTS",
     "rag.web.search.concurrent_requests",
-    int(os.getenv("WEB_SEARCH_CONCURRENT_REQUESTS", "10")),
+    int(os.getenv("WEB_SEARCH_CONCURRENT_REQUESTS", "3")),
 )
 
 WEB_LOADER_ENGINE = PersistentConfig(
     "WEB_LOADER_ENGINE",
     "rag.web.loader.engine",
-    os.environ.get("WEB_LOADER_ENGINE", ""),
+    os.environ.get("WEB_LOADER_ENGINE", "crawl4ai"),
 )
 
 ENABLE_WEB_LOADER_SSL_VERIFICATION = PersistentConfig(
