@@ -191,3 +191,4 @@ async def comfyui_generate_image(
     ws.close()
 
     return images
+

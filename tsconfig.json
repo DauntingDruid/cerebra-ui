@@ -15,3 +15,38 @@
 	// If you want to overwrite includes/excludes, make sure to copy over the relevant includes/excludes
 	// from the referenced tsconfig.json - TypeScript does not merge them in
 }
+// {
+//   "extends": "./.svelte-kit/tsconfig.json",
+
+//   "compilerOptions": {
+//     // 只做类型检查，不生成任何输出文件
+//     "noEmit": true,
+
+//     // JS/TS 混编常用开关
+//     "allowJs": true,
+//     "checkJs": true,
+
+//     // 稳定性
+//     "strict": true,
+//     "skipLibCheck": true,
+//     "forceConsistentCasingInFileNames": true
+//   },
+
+//   // 只让前端源码参与类型检查
+//   "include": [
+//     "src",
+//     "vite.config.ts",
+//     "svelte.config.js",
+//     "cypress.config.ts"
+//   ],
+
+//   // 把非前端目录排除
+//   "exclude": [
+//     "node_modules",
+//     "backend",
+//     "kubernetes",
+//     "**/static/**",
+//     "cypress/e2e/**/__snapshots__"
+//   ]
+// }
+
