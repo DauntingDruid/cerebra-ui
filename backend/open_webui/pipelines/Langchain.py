@@ -237,7 +237,7 @@ def _headers_langflow(api_key: str) -> Dict[str, str]:
         headers["x-api-key"] = api_key
     return headers
 
-def _post_to_langflow(base_url: str, flow_id: str, user_api_key: str, env_api_key: str, user_text: str, body: Dict[str, Any], valves: Valves, timeout: int = 60) -> Dict[str, Any]:
+def _post_to_langflow(base_url: str, flow_id: str, user_api_key: str, env_api_key: str, user_text: str, body: Dict[str, Any], valves: Valves, timeout: int = 120) -> Dict[str, Any]:
     # Check API key
     if env_api_key and (not user_api_key or user_api_key != env_api_key):
         return {"status": "error", "message": "401 Unauthorized due to missing or wrong Langflow API key."}
@@ -375,7 +375,7 @@ def _post_to_n8n(url: str, payload: Dict[str, Any], user_api_key: str, env_api_k
         "X-N8N-API-KEY": user_api_key
     }
     try:
-        r = requests.post(url, json=payload, headers=headers, timeout=60)
+        r = requests.post(url, json=payload, headers=headers, timeout=120)
         r.raise_for_status()
         return r.json()
     except Exception as e:
