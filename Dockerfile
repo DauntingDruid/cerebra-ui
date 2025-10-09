@@ -150,8 +150,6 @@ RUN pip3 install --no-cache-dir uv && \
     chown -R $UID:$GID /app/backend/data/
 
 
-RUN uv pip install --system langchain langchain-core langchain-community langchain-openai --no-cache-dir
-
 # copy embedding weight from build
 # RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
 # COPY --from=build /app/onnx /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx
