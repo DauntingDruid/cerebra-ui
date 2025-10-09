@@ -7,8 +7,13 @@ services:
         BUILD_HASH: local
     image: cerebra-ui:local
     pull_policy: never
+    depends_on:
+      - redis
     environment:
       - STATIC_DIR=/app/static
+      - ENABLE_CHAT_CACHE=true
+      - CHAT_CACHE_MAX_RECENT=3
+      - CHAT_CACHE_TTL_SECONDS=900
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro

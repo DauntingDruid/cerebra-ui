@@ -69,11 +69,64 @@ docker compose down -v
 - Compose includes `ollama`, `open-webui`, and `redis`. No extra setup needed.
 - If port 3000 or 6380 is in use, change `OPEN_WEBUI_PORT` (start command) or edit `docker-compose.yaml` port mappings.
 
+### 💾 Redis Chat Cache (Demo-ready)
+- Enabled by default via env in `docker-compose.yaml` and `docker-compose.override.yaml`:
+  - `ENABLE_CHAT_CACHE=true`
+  - `CHAT_CACHE_MAX_RECENT=3` (cache kept for your 3 most recent opened chats)
+  - `CHAT_CACHE_TTL_SECONDS=900` (15 minutes TTL)
+
+How it works:
+- When you open a chat, its latest snapshot is cached in Redis.
+- On subsequent opens, the chat loads from cache first; DB remains source of truth.
+- When a new assistant message is saved, the cache is refreshed automatically.
+
+Quick verification (local):
+```bash
+# 1) Start stack
+OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --build --force-recreate
+
+# 2) Health check
+docker ps --format "{{.Names}}\t{{.Status}}" | grep open-webui
+curl -I http://localhost:3000 | head -1
+
+# 3) Open the UI, create a chat, send 2-3 messages, note chat_id from URL
+
+# 4) Warm the cache by viewing the same chat twice
+# (observe faster reload on second open)
+
+# 5) Verify Redis keys (optional)
+docker exec -it redis redis-cli KEYS 'open-webui:chat-cache:*'
+
+# 6) Test LRU eviction
+# Open 4th chat; the oldest of the prior 3 cached chats gets evicted
+docker exec -it redis redis-cli LRANGE open-webui:chat-cache:recent:<your_user_id> 0 -1
+
+# 7) Confirm refresh after message
+# Send a new message; cache snapshot is updated automatically
+docker exec -it redis redis-cli GET open-webui:chat-cache:item:<chat_id> | head -c 200
+```
+
+Disable temporarily (optional):
+```bash
+OPEN_WEBUI_PORT=3000 ENABLE_CHAT_CACHE=false docker compose up -d
+```
+
 ---
 
 ## 🚨 Troubleshooting
 
-### ❌ *Error Case 1: Container Name Conflict*
+### ❌ *Error Case 1: Free up space*
+```
+Error response from daemon: No space left on device
+```
+
+**🔧 Solution:**
+Free up space:
+```bash
+docker system prune -af --volumes
+```
+
+### ❌ *Error Case 2: Container Name Conflict*
 ```
 Error response from daemon: Conflict. The container name "/ollama" is already in use
 Error response from daemon: Conflict. The container name "/redis" is already in use
@@ -87,7 +140,7 @@ Reset: Remove all containers and volumes (if error occurs)
     OPEN_WEBUI_PORT=3000 docker compose up -d
     ```
 
-### ❌ *Error Case 2: 500 Internal Error (Embedding Download)*
+### ❌ *Error Case 3: 500 Internal Error (Embedding Download)*
 ```
 - Browser shows "500: Internal Error" when accessing http://localhost:3000
 - Container shows "Up X minutes (unhealthy)" status  

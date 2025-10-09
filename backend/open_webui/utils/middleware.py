@@ -90,6 +90,7 @@ from open_webui.env import (
     ENABLE_REALTIME_CHAT_SAVE,
 )
 from open_webui.constants import TASKS
+from open_webui.utils.chat_cache import delete_chat_cache, set_cached_chat
 
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
@@ -1806,6 +1807,20 @@ async def process_chat_response(
                                                     ),
                                                 },
                                             )
+                                            try:
+                                                # Invalidate then set updated cache snapshot
+                                                delete_chat_cache(request.app, metadata["chat_id"])
+                                                chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
+                                                if chat:
+                                                    from open_webui.models.chats import ChatResponse
+
+                                                    set_cached_chat(
+                                                        request.app,
+                                                        metadata["chat_id"],
+                                                        ChatResponse(**chat.model_dump()).model_dump(),
+                                                    )
+                                            except Exception:
+                                                pass
                                         else:
                                             data = {
                                                 "content": serialize_content_blocks(
@@ -2209,6 +2224,19 @@ async def process_chat_response(
                             "content": serialize_content_blocks(content_blocks),
                         },
                     )
+                    try:
+                        delete_chat_cache(request.app, metadata["chat_id"])
+                        chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
+                        if chat:
+                            from open_webui.models.chats import ChatResponse
+
+                            set_cached_chat(
+                                request.app,
+                                metadata["chat_id"],
+                                ChatResponse(**chat.model_dump()).model_dump(),
+                            )
+                    except Exception:
+                        pass
 
                 # Send a webhook notification if the user is not active
                 if get_active_status_by_user_id(user.id) is None:
@@ -2247,6 +2275,19 @@ async def process_chat_response(
                             "content": serialize_content_blocks(content_blocks),
                         },
                     )
+                    try:
+                        delete_chat_cache(request.app, metadata["chat_id"])
+                        chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
+                        if chat:
+                            from open_webui.models.chats import ChatResponse
+
+                            set_cached_chat(
+                                request.app,
+                                metadata["chat_id"],
+                                ChatResponse(**chat.model_dump()).model_dump(),
+                            )
+                    except Exception:
+                        pass
 
             if response.background is not None:
                 await response.background()

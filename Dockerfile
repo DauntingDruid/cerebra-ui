@@ -65,7 +65,10 @@ ENV OPENAI_API_KEY="" \
     WEBUI_SECRET_KEY="" \
     SCARF_NO_ANALYTICS=true \
     DO_NOT_TRACK=true \
-    ANONYMIZED_TELEMETRY=false
+    ANONYMIZED_TELEMETRY=false\
+    ENABLE_CHAT_CACHE=true \
+    CHAT_CACHE_MAX_RECENT=3 \
+    CHAT_CACHE_TTL_SECONDS=900
 
 #### Other models #########################################################
 ## whisper TTS model settings ##
