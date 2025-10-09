@@ -1,0 +1,19 @@
+FROM python:3.11.4-slim
+
+# Set working directory as project root
+WORKDIR /cerebra-ui
+
+# Copy entire backend and .env
+COPY backend/ ./backend/
+COPY .env.example .env
+
+# Install dependencies
+RUN apt-get update && apt-get install -y curl git \
+ && pip install --upgrade pip \
+ && pip install -r backend/requirements.txt
+
+EXPOSE 8000
+
+CMD ["uvicorn", "backend.open_webui.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+
