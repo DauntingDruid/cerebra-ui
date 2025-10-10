@@ -489,7 +489,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
     BetterAuth-integrated signin that matches the old auths.py logic exactly
     """
     
-    # Handle trusted email header authentication (same as old code)
+    # Handle trusted email header authentication
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
@@ -517,7 +517,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
         # Authenticate using Open WebUI's method
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
     
-    # Handle no-auth mode (same as old code)
+    # Handle no-auth mode
     elif WEBUI_AUTH == False:
         admin_email = "admin@localhost"
         admin_password = "admin"
@@ -536,7 +536,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
             user = Auths.authenticate_user(admin_email.lower(), admin_password)
     
-    # Handle BetterAuth authentication (new logic)
+    # Handle BetterAuth authentication
     else:
         email = form_data.email.lower()
         password = form_data.password
@@ -580,7 +580,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
     # If we reach here, user is authenticated
     if user:
-        # Generate JWT token (same as old code)
+        # Generate JWT token
         expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
         expires_at = None
         if expires_delta:
@@ -597,7 +597,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             else None
         )
 
-        # Set the cookie token (same as old code)
+        # Set the cookie token
         response.set_cookie(
             key="token",
             value=token,
@@ -607,7 +607,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             secure=WEBUI_SESSION_COOKIE_SECURE,
         )
 
-        # Get user permissions (same as old code)
+        # Get user permissions
         user_permissions = get_permissions(
             user.id, request.app.state.config.USER_PERMISSIONS
         )
@@ -638,7 +638,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
     BetterAuth-integrated signup that matches the old auths.py logic
     """
     
-    # Check if signup is allowed (same as old code)
+    # Check if signup is allowed
     if WEBUI_AUTH:
         if (
             not request.app.state.config.ENABLE_SIGNUP
@@ -661,7 +661,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 
     user_count = Users.get_num_users()
     
-    # Determine role (same as old code)
+    # Determine role
     role = (
         "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
     )
@@ -741,14 +741,6 @@ async def verify_email(payload: dict):
     txt = await _get_text("/api/auth/verify", {"token": token, "email": email})
     
     return JSONResponse({"status": True, "message": txt or "Email verified successfully"})
-
-
-############################
-# Admin Approval (REMOVED - not needed for standard Open WebUI)
-############################
-
-# Note: Open WebUI doesn't have a built-in approval system in the standard schema
-# If you need this, you'll need to add 'status' and 'is_active' columns to your User model
 
 
 ############################
