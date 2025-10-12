@@ -581,8 +581,10 @@
 
 					if (sessionUser) {
 						// Save Session User to Store
+						// $socket.emit('user-join', { auth: { token: sessionUser.token } });
+						// await user.set(sessionUser);
+						// await config.set(await getBackendConfig());
 						$socket.emit('user-join', { auth: { token: sessionUser.token } });
-
 						await user.set(sessionUser);
 						await config.set(await getBackendConfig());
 					} else {
@@ -593,7 +595,13 @@
 				} else {
 					// Don't redirect if we're already on the auth page
 					// Needed because we pass in tokens from OAuth logins via URL fragments
-					if ($page.url.pathname !== '/auth') {
+					// if ($page.url.pathname !== '/auth') {
+					// 	await goto(`/auth?redirect=${encodedUrl}`);
+
+					const publicPaths = ['/auth', '/auth/reset-password', '/auth/reset-password/confirm'];
+					const isPublicPath = publicPaths.some(path => $page.url.pathname.startsWith(path));
+					
+					if (!isPublicPath) {
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				}

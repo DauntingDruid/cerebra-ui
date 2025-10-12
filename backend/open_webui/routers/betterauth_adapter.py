@@ -358,8 +358,6 @@
 
 
 
-
-
 # backend/open_webui/routers/betterauth_adapter.py
 import os
 import json
@@ -489,7 +487,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
     BetterAuth-integrated signin that matches the old auths.py logic exactly
     """
     
-    # Handle trusted email header authentication
+    # Handle trusted email header authentication (same as old code)
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
@@ -517,7 +515,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
         # Authenticate using Open WebUI's method
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
     
-    # Handle no-auth mode
+    # Handle no-auth mode (same as old code)
     elif WEBUI_AUTH == False:
         admin_email = "admin@localhost"
         admin_password = "admin"
@@ -536,7 +534,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
             user = Auths.authenticate_user(admin_email.lower(), admin_password)
     
-    # Handle BetterAuth authentication
+    # Handle BetterAuth authentication (new logic)
     else:
         email = form_data.email.lower()
         password = form_data.password
@@ -580,7 +578,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
     # If we reach here, user is authenticated
     if user:
-        # Generate JWT token
+        # Generate JWT token (same as old code)
         expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
         expires_at = None
         if expires_delta:
@@ -597,7 +595,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             else None
         )
 
-        # Set the cookie token
+        # Set the cookie token (same as old code)
         response.set_cookie(
             key="token",
             value=token,
@@ -607,7 +605,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             secure=WEBUI_SESSION_COOKIE_SECURE,
         )
 
-        # Get user permissions
+        # Get user permissions (same as old code)
         user_permissions = get_permissions(
             user.id, request.app.state.config.USER_PERMISSIONS
         )
@@ -638,7 +636,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
     BetterAuth-integrated signup that matches the old auths.py logic
     """
     
-    # Check if signup is allowed
+    # Check if signup is allowed (same as old code)
     if WEBUI_AUTH:
         if (
             not request.app.state.config.ENABLE_SIGNUP
@@ -661,7 +659,7 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 
     user_count = Users.get_num_users()
     
-    # Determine role
+    # Determine role (same as old code)
     role = (
         "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
     )
@@ -706,6 +704,64 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
         raise
     except Exception as err:
         raise HTTPException(500, detail=f"Signup failed: {str(err)}")
+
+
+############################
+# Password Reset
+############################
+
+@router.post("/forgot-password")
+async def forgot_password(payload: dict):
+    """
+    Request password reset email
+    Body: { "email": "user@example.com" }
+    Returns: { "status": true, "message": "..."}
+    """
+    email = (payload or {}).get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    # Send password reset request to BetterAuth
+    try:
+        await _post_json("/api/auth/forgot-password", {"email": email, "redirectTo": "/auth/reset-password/confirm"})
+        return JSONResponse({
+            "status": True, 
+            "message": "If an account exists with this email, a password reset link has been sent."
+        })
+    except HTTPException as e:
+        # Always return success to prevent email enumeration
+        return JSONResponse({
+            "status": True, 
+            "message": "If an account exists with this email, a password reset link has been sent."
+        })
+
+
+@router.post("/reset-password")
+async def reset_password(payload: dict):
+    """
+    Reset password using token from email
+    Body: { "token": "...", "password": "new_password" }
+    Returns: { "status": true, "message": "..."}
+    """
+    token = (payload or {}).get("token", "")
+    new_password = (payload or {}).get("password", "")
+    
+    if not token or not new_password:
+        raise HTTPException(status_code=400, detail="Token and new password are required")
+
+    # Reset password via BetterAuth
+    try:
+        await _post_json("/api/auth/reset-password", {
+            "token": token,
+            "password": new_password
+        })
+        
+        return JSONResponse({
+            "status": True,
+            "message": "Password has been reset successfully. You can now sign in with your new password."
+        })
+    except HTTPException as e:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
 
 ############################
