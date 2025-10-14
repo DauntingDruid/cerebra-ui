@@ -53,7 +53,7 @@
 		);
 		await setSessionUser(sessionUser);
 		
-		// 注释掉邮箱验证跳转，直接进入主页
+		// Comment out email verification redirect, directly enter the home page
 		// goto('/auth/verify-email?type=signup');
 	};
 
@@ -117,7 +117,7 @@
 </script>
 
 <svelte:head>
-	<title>Create your free account</title>
+	<title>{$i18n.t('Create your free account')}</title>
 </svelte:head>
 
 <div class="w-full h-screen max-h-[100dvh] bg-white dark:bg-black">
@@ -138,7 +138,7 @@
 				<!-- Title -->
 				<div class="text-center mb-8">
 					<h1 class="text-2xl font-bold text-black dark:text-white">
-						Create your free account
+						{$i18n.t('Create your free account')}
 					</h1>
 				</div>
 
@@ -152,42 +152,42 @@
 				>
 					<div>
 						<label for="name" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Name
+							{$i18n.t('Name')}
 						</label>
 						<input
 							id="name"
 							bind:value={name}
 							type="text"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your full name"
+							placeholder="{$i18n.t('Enter your full name')}"
 							required
 						/>
 					</div>
 
 					<div>
 						<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Email
+							{$i18n.t('Email')}
 						</label>
 						<input
 							id="email"
 							bind:value={email}
 							type="email"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your email"
+							placeholder="{$i18n.t('Enter your email')}"
 							required
 						/>
 					</div>
 
 					<div>
 						<label for="password" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Password
+							{$i18n.t('Password')}
 						</label>
 						<input
 							id="password"
 							bind:value={password}
 							type="password"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your password"
+							placeholder="{$i18n.t('Enter your password')}"
 							required
 						/>
 					</div>
@@ -196,21 +196,21 @@
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
 					>
-						Sign Up
+						{$i18n.t('Sign up')}
 					</button>
 				</form>
 
 				<!-- Sign In Link -->
 				<div class="text-center mt-6">
 					<span class="text-sm text-gray-600 dark:text-gray-400">
-						Already have an account?
+						{$i18n.t('Already have an account?')}
 					</span>
 					<button
 						type="button"
 						class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/login')}
 					>
-						Sign In
+						{$i18n.t('Sign in')}
 					</button>
 				</div>
 			{/if}

@@ -7,20 +7,20 @@
 
 	export let saveSettings: Function;
 
-	// 静态配置，不依赖后端
+	// Static configuration, does not depend on the backend
 	let deepResearchConfig = {
-		ENABLE_DEEP_RESEARCH: true, // 默认开启
+		ENABLE_DEEP_RESEARCH: true, // Default enabled
 		DEEP_RESEARCH_ENDPOINT: 'https://api.example.com/deep-research'
 	};
 
 	const submitHandler = async () => {
-		// 保存到localStorage，不调用后端
+		// Save to localStorage, do not call the backend
 		localStorage.setItem('deepResearchConfig', JSON.stringify(deepResearchConfig));
 		toast.success($i18n.t('Settings saved successfully!'));
 	};
 
 	onMount(() => {
-		// 从localStorage加载配置
+		// Load configuration from localStorage
 		const saved = localStorage.getItem('deepResearchConfig');
 		if (saved) {
 			try {

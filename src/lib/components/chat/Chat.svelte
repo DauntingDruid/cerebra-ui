@@ -1405,6 +1405,7 @@
 					modelName: model.name ?? model.id,
 					modelIdx: modelIdx ? modelIdx : _modelIdx,
 					userContext: null,
+					deepResearchEnabled: deepResearchEnabled,
 					timestamp: Math.floor(Date.now() / 1000) // Unix epoch
 				};
 
@@ -2037,6 +2038,7 @@
 									{chatActionHandler}
 									{addMessages}
 									bottomPadding={files.length > 0}
+									{deepResearchEnabled}
 								/>
 							</div>
 						</div>

@@ -154,7 +154,7 @@
 				<!-- Title -->
 				<div class="text-center mb-8">
 					<h1 class="text-2xl font-bold text-black dark:text-white mb-2">
-						Sign in to your account
+						{$i18n.t('Sign in to your account')}
 					</h1>
 				</div>
 
@@ -169,28 +169,28 @@
 					{#if mode === 'ldap'}
 						<div>
 							<label for="username" class="block text-sm font-medium text-black dark:text-white mb-2">
-								Username
+								{$i18n.t('Username')}
 							</label>
 							<input
 								id="username"
 								bind:value={ldapUsername}
 								type="text"
 								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								placeholder="Enter your username"
+								placeholder="{$i18n.t('Enter your username')}"
 								required
 							/>
 						</div>
 					{:else}
 						<div>
 							<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-								Email
+								{$i18n.t('Email')}
 							</label>
 							<input
 								id="email"
 								bind:value={email}
 								type="email"
 								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-								placeholder="Enter your email"
+								placeholder="{$i18n.t('Enter your email')}"
 								required
 							/>
 						</div>
@@ -198,15 +198,15 @@
 
 					<div>
 						<div class="flex justify-between items-center mb-2">
-							<label for="password" class="block text-sm font-medium text-black dark:text-white">
-								Password
-							</label>
+								<label for="password" class="block text-sm font-medium text-black dark:text-white">
+									{$i18n.t('Password')}
+								</label>
 							<button
 								type="button"
 								class="text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA]"
 								on:click={() => goto('/auth/forgot-password')}
 							>
-								Forgot?
+									{$i18n.t('Forgot?')}
 							</button>
 						</div>
 						<input
@@ -214,7 +214,7 @@
 							bind:value={password}
 							type="password"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your password"
+								placeholder="{$i18n.t('Enter your password')}"
 							required
 						/>
 					</div>
@@ -223,21 +223,21 @@
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
 					>
-						Sign In
+						{$i18n.t('Sign in')}
 					</button>
 				</form>
 
 				<!-- Sign Up Link -->
 				<div class="text-center mt-6">
 					<span class="text-sm text-gray-600 dark:text-gray-400">
-						Don't have an account?
+						{$i18n.t('Don\'t have an account?')}
 					</span>
 					<button
 						type="button"
 						class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/signup')}
 					>
-						Sign Up
+						{$i18n.t('Sign up')}
 					</button>
 				</div>
 			{/if}

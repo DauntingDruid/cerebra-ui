@@ -1,46 +1,47 @@
 <script lang="ts">
 	export let className = '';
+	export let strokeWidth = '4';
 </script>
 
 <svg
 	class={className}
 	width="20"
 	height="20"
-	viewBox="0 0 48 48"
+	viewBox="0 0 24 24"
 	fill="none"
 	xmlns="http://www.w3.org/2000/svg"
 >
 	<path
-		d="M26 44C30.3462 40.9919 32.6627 37.9513 32.9493 34.8782C33.2359 31.805 32.308 29.5123 30.1657 28"
+		d="M13 22C16.1731 20.496 17.8314 18.9757 18.4747 17.4391C19.118 15.9025 18.654 14.7562 17.0829 14"
 		stroke="currentColor"
-		stroke-width="4"
+		stroke-width={strokeWidth}
 		stroke-linecap="round"
 	/>
 	<path
 		fill-rule="evenodd"
 		clip-rule="evenodd"
-		d="M27.6553 28.2227C30.1406 28.2227 32.1553 26.2079 32.1553 23.7227C32.1553 21.2374 30.1406 19.2227 27.6553 19.2227C25.17 19.2227 23.1553 21.2374 23.1553 23.7227C23.1553 26.2079 25.17 28.2227 27.6553 28.2227Z"
+		d="M13.8277 14.1114C15.0703 14.1114 16.0777 13.104 16.0777 11.8614C16.0777 10.6187 15.0703 9.61135 13.8277 9.61135C12.585 9.61135 11.5777 10.6187 11.5777 11.8614C11.5777 13.104 12.585 14.1114 13.8277 14.1114Z"
 		fill="none"
 		stroke="currentColor"
-		stroke-width="4"
+		stroke-width={strokeWidth}
 	/>
 	<path
-		d="M24.2882 27L18.7783 32.5772L9.58594 23.3848L27.9707 4.99999L37.1631 14.1924L30.9764 20.3791"
+		d="M12.1441 13.5L9.38915 16.2886L4.79297 11.6924L13.9854 2.49999L18.5816 7.09619L15.4882 10.1896"
 		stroke="currentColor"
-		stroke-width="4"
+		stroke-width={strokeWidth}
 		stroke-linecap="round"
 		stroke-linejoin="round"
 	/>
 	<path
-		d="M6.55762 28.1357L14.4195 35.8141"
+		d="M3.27881 14.0679L7.20975 17.9071"
 		stroke="currentColor"
-		stroke-width="4"
+		stroke-width={strokeWidth}
 		stroke-linecap="round"
 	/>
 	<path
-		d="M6 44H42"
+		d="M3 22H21"
 		stroke="currentColor"
-		stroke-width="4"
+		stroke-width={strokeWidth}
 		stroke-linecap="round"
 	/>
 </svg>
