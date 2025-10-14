@@ -209,15 +209,6 @@ class SearchForm(BaseModel):
     page_size: Optional[int] = Field(default=None, ge=1, le=10)
     concurrency: Optional[int] = Field(default=None, ge=1, le=10)
 
-
-# class ProcessUrlForm(CollectionNameForm):
-#     url: str
-
-
-# class SearchForm(BaseModel):
-#     query: str
-
-
 @router.get("/")
 async def get_status(request: Request):
     return {
@@ -1441,6 +1432,21 @@ def _sanitize_mode(s: str | None) -> str:
         return ""
     return v
 
+MIN_OK_LEN = 500
+
+def _amp_variants(u: str) -> list[str]:
+    out = []
+    if not u.endswith("/amp"):
+        out.append(u.rstrip("/") + "/amp")
+    if "npr.org" in u and "outputType=amp" not in u:
+        sep = "&" if "?" in u else "?"
+        out.append(u + f"{sep}outputType=amp")
+    dedup, seen = [], set()
+    for x in out:
+        if x not in seen:
+            dedup.append(x); seen.add(x)
+    return dedup
+
 async def _fetch_one_with_crawl4ai_fallback(
     request: Request,
     url: str,
@@ -1451,24 +1457,46 @@ async def _fetch_one_with_crawl4ai_fallback(
     trust_env: bool,
 ):
     try:
-        docs = await _crawl4ai_fetch_docs(
-            request, [url], timeout_sec=timeout_s, concurrency=1, user_agent=user_agent
-        )
-        if docs and docs[0] and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
-            return docs[0]
-        raise RuntimeError("crawl4ai returned empty doc")
+        docs = await _crawl4ai_fetch_docs(request, [url], timeout_sec=timeout_s, concurrency=1, user_agent=user_agent)
+        if docs and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
+            content = (docs[0].page_content or "").strip()
+            if len(content) >= MIN_OK_LEN:
+                return docs[0]
+            else:
+                raise RuntimeError(f"crawl4ai content too short: {len(content)}")
+        raise RuntimeError("crawl4ai empty")
     except Exception as e:
-        log.debug("[crawl4ai] fail url=%s err=%s -> fallback to simple loader", url, e)
+        log.debug("[crawl4ai] %s -> simple loader", e)
 
     try:
         loader = get_web_loader([url], verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
         docs = await loader.aload()
-        if docs and docs[0] and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
-            return docs[0]
-        raise RuntimeError("simple loader returned empty doc")
+        if docs and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
+            content = (docs[0].page_content or "").strip()
+            if len(content) >= MIN_OK_LEN:
+                return docs[0]
+            else:
+                log.debug("[simple loader] short content=%s -> try AMP", len(content))
+        else:
+            log.debug("[simple loader] empty -> try AMP")
     except Exception as e:
-        log.debug("[simple loader] fail url=%s err=%s", url, e)
-        return None
+        log.debug("[simple loader] %s -> try AMP", e)
+
+    for amp in _amp_variants(url)[:2]:
+        try:
+            loader = get_web_loader([amp], verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
+            docs = await loader.aload()
+            if docs and getattr(docs[0], "page_content", None):
+                content = docs[0].page_content.strip()
+                if len(content) >= MIN_OK_LEN:
+                    docs[0].metadata["source"] = url
+                    docs[0].metadata["via"] = amp
+                    return docs[0]
+        except Exception as e:
+            log.debug("[amp] %s fail: %s", amp, e)
+
+    return None
+
 
 async def _engine_search_links(
     request: Request,

@@ -431,7 +431,37 @@ async def chat_web_search_handler(
                         )
                 elif results.get("docs"):
                     # Invoked when bypass embedding and retrieval is set to True
-                    docs = results["docs"]
+                    # docs = results["docs"]
+
+                    # === logs ===
+                    urls = results.get("filenames") or []
+                    docs = results.get("docs") or []
+
+                    max_items = min(len(urls), len(docs)) if urls and docs else len(docs)
+
+                    for i in range(max_items):
+                        d = docs[i]
+                        u = urls[i] if i < len(urls) else None
+                        if not u and isinstance(d, dict):
+                            u = (d.get("metadata") or {}).get("source") or d.get("source") or "<unknown>"
+                        if not u:
+                            u = "<unknown>"
+
+                        if isinstance(d, dict):
+                            content = d.get("content") or ""
+                        else:
+                            content = d or ""
+
+                        content_str = content if isinstance(content, str) else str(content or "")
+                        preview = safe_preview(content_str, 800)
+
+                        try:
+                            log.info("[web_search] DOC#%d url=%s len=%d preview=%s",
+                                    i + 1, u, len(content_str), preview)
+                        except Exception as e:
+                            log.exception("log preview failed: %s", e)
+                    # === logs ===
+
 
                     if len(docs) == len(results["filenames"]):
                         # the number of docs and filenames (urls) should be the same
@@ -507,6 +537,20 @@ async def chat_web_search_handler(
         )
 
     return form_data
+
+def safe_preview(x, n=800):
+    if x is None:
+        s = ""
+    elif isinstance(x, str):
+        s = x
+    elif isinstance(x, dict):
+        s = str(x.get("content") or x.get("text") or x.get("title") or x)
+    elif isinstance(x, (list, tuple)):
+        s = " ".join(str(i) for i in x[:5])
+    else:
+        s = str(x)
+    s = s.replace("\n", " ").replace("\r", " ")
+    return (s[:n] + "…") if len(s) > n else s
 
 
 async def chat_image_generation_handler(
