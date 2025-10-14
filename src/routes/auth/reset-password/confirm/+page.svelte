@@ -37,7 +37,7 @@
 	function validatePassword() {
 		passwordError = '';
 		if (password.length < 6) {
-			passwordError = 'Password must be at least 6 characters long';
+			passwordError = $i18n.t('Password must be at least 6 characters long');
 			return false;
 		}
 		return true;
@@ -46,7 +46,7 @@
 	function validateConfirmPassword() {
 		confirmPasswordError = '';
 		if (confirmPassword !== password) {
-			confirmPasswordError = 'Passwords do not match';
+			confirmPasswordError = $i18n.t('Passwords do not match');
 			return false;
 		}
 		return true;
@@ -94,7 +94,7 @@
 				<!-- Title -->
 				<div class="text-center mb-8">
 					<h1 class="text-2xl font-bold text-black dark:text-white">
-						Reset your password
+						{$i18n.t('Reset your password')}
 					</h1>
 				</div>
 
@@ -102,14 +102,14 @@
 				<form class="space-y-6" on:submit={handleSubmit}>
 					<div>
 						<label for="password" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Reset your password
+							{$i18n.t('Reset your password')}
 						</label>
 						<input
 							id="password"
 							bind:value={password}
 							type="password"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {passwordError ? 'border-red-500' : ''}"
-							placeholder="Enter new password"
+							placeholder="{$i18n.t('Enter new password')}"
 							required
 							on:blur={validatePassword}
 						/>
@@ -120,14 +120,14 @@
 
 					<div>
 						<label for="confirm-password" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Confirm your password
+							{$i18n.t('Confirm your password')}
 						</label>
 						<input
 							id="confirm-password"
 							bind:value={confirmPassword}
 							type="password"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {confirmPasswordError ? 'border-red-500' : ''}"
-							placeholder="Confirm new password"
+							placeholder="{$i18n.t('Confirm new password')}"
 							required
 							on:blur={validateConfirmPassword}
 						/>
@@ -140,7 +140,7 @@
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
 					>
-						Confirm
+						{$i18n.t('Confirm')}
 					</button>
 				</form>
 
@@ -151,7 +151,7 @@
 						class="text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/login')}
 					>
-						Back to Sign In
+						{$i18n.t('Back to Sign In')}
 					</button>
 				</div>
 			{/if}

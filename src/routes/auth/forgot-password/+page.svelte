@@ -33,8 +33,8 @@
 
 	const handleSubmit = (e) => {
 		e.preventDefault();
-		// TODO: 这里应该调用重置密码的API
-		// 现在先静态跳转到邮箱验证页面
+		// TODO: This should call the reset password API
+		// For now, just statically redirect to the email verification page
 		goto('/auth/verify-email?type=reset');
 	};
 
@@ -45,7 +45,7 @@
 </script>
 
 <svelte:head>
-	<title>Reset your password</title>
+	<title>{$i18n.t('Reset your password')}</title>
 </svelte:head>
 
 <div class="w-full h-screen max-h-[100dvh] bg-white dark:bg-black">
@@ -66,7 +66,7 @@
 				<!-- Title -->
 				<div class="text-center mb-8">
 					<h1 class="text-2xl font-bold text-black dark:text-white">
-						Reset your password
+						{$i18n.t('Reset your password')}
 					</h1>
 				</div>
 
@@ -74,14 +74,14 @@
 				<form class="space-y-6" on:submit={handleSubmit}>
 					<div>
 						<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Email
+							{$i18n.t('Email')}
 						</label>
 						<input
 							id="email"
 							bind:value={email}
 							type="email"
 							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your email"
+							placeholder="{$i18n.t('Enter your email')}"
 							required
 						/>
 					</div>
@@ -90,7 +90,7 @@
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
 					>
-						Send Email
+						{$i18n.t('Send Email')}
 					</button>
 				</form>
 
@@ -101,7 +101,7 @@
 						class="text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/login')}
 					>
-						Back to Sign In
+						{$i18n.t('Back to Sign In')}
 					</button>
 				</div>
 			{/if}

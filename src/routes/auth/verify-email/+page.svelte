@@ -11,20 +11,20 @@
 	let verificationType = '';
 
 	onMount(async () => {
-		// 从URL参数获取验证类型
+		// Get verification type from URL parameters
 		const urlParams = new URLSearchParams($page.url.search);
 		verificationType = urlParams.get('type') || 'signup';
 		
-		// 从URL参数获取邮箱（如果有的话）
+		// Get email from URL parameters (if any)
 		email = urlParams.get('email') || '';
 		
 		loaded = true;
 	});
 
 	const handleResendEmail = () => {
-		// TODO: 这里应该调用重发邮件的API
+		// TODO: This should call the resend email API
 		console.log('Resending verification email to:', email);
-		// 现在只是显示一个提示
+		// For now, just display a prompt
 		alert('Verification email has been resent!');
 	};
 

@@ -53,7 +53,7 @@
 			<div class="flex w-full justify-between items-center">
 				<div class="flex flex-col text-sm text-gray-700 dark:text-gray-200">
 					<div class="flex gap-1">
-						<span>v.0.0.1</span>
+						<span>v.0.1.0</span>
 					</div>
 
 					<!-- <button

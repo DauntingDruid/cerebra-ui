@@ -38,6 +38,7 @@
 	import RateComment from './RateComment.svelte';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import WebSearchResults from './ResponseMessage/WebSearchResults.svelte';
+	import DeepResearchThinking from './ResponseMessage/DeepResearchThinking.svelte';
 	import Sparkles from '$lib/components/icons/Sparkles.svelte';
 
 	import DeleteConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
@@ -73,6 +74,7 @@
 		done: boolean;
 		error?: boolean | { content: string };
 		sources?: string[];
+		deepResearchEnabled?: boolean;
 		code_executions?: {
 			uuid: string;
 			name: string;
@@ -132,6 +134,7 @@
 
 	export let isLastMessage = true;
 	export let readOnly = false;
+	export let deepResearchEnabled = false;
 
 	let buttonsContainerElement: HTMLDivElement;
 	let showDeleteConfirm = false;
@@ -782,6 +785,29 @@
 								{:else if message.content && message.error !== true}
 									<!-- always show message contents even if there's an error -->
 									<!-- unless message.error === true which is legacy error handling, where the error message is stored in message.content -->
+									
+									<!-- Deep Research Thinking Process -->
+									{#if message.deepResearchEnabled && message.role === 'assistant'}
+										<div class="status-description flex items-center gap-2 py-0.5">
+											{#if !message.done}
+												<div class="">
+													<Spinner className="size-4" />
+												</div>
+											{/if}
+											<div class="flex flex-col justify-center -space-y-0.5">
+												<div
+													class="{!message.done
+														? 'shimmer'
+														: ''} text-gray-500 dark:text-gray-500 text-base line-clamp-1 text-wrap"
+												>
+													{$i18n.t('Deep Research - Thinking Process')}
+												</div>
+											</div>
+										</div>
+									{/if}
+									
+									
+									
 									<ContentRenderer
 										id={message.id}
 										{history}
