@@ -1,48 +1,128 @@
-import logging
-from typing import Optional
-from urllib.parse import urlencode
+import os, httpx
+from typing import List, Dict, Optional
+from .engine_template import template_paged_engine
+from open_webui.retrieval.web.main import SearchResult
 
-import requests
-from open_webui.retrieval.web.main import SearchResult, get_filtered_results
-from open_webui.env import SRC_LOG_LEVELS
+ENGINE_NAME = "serpapi"
 
-log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["RAG"])
+_ENV_KEY = os.getenv("SERPAPI_API_KEY") or os.getenv("SERPAPI_KEY")
+_ENV_ENGINE = (os.getenv("SERPAPI_ENGINE") or "google").strip().lower()
+_ENV_ENDPOINT = os.getenv("SERPAPI_ENDPOINT", "https://serpapi.com/search")
 
-
-def search_serpapi(
+async def _fetch_page_impl(
+    client: httpx.AsyncClient,
+    q: str,
+    page: int,
+    page_size: int,
+    timeout: float,
+    *,
     api_key: str,
     engine: str,
-    query: str,
-    count: int,
-    filter_list: Optional[list[str]] = None,
-) -> list[SearchResult]:
-    """Search using serpapi.com's API and return the results as a list of SearchResult objects.
+    endpoint: str,
+) -> List[Dict]:
+    if not api_key:
+        raise RuntimeError("SERPAPI_API_KEY not set")
 
-    Args:
-      api_key (str): A serpapi.com API key
-      query (str): The query to search for
-    """
-    url = "https://serpapi.com/search"
+    page = max(1, int(page))
+    page_size = max(1, int(page_size))
 
-    engine = engine or "google"
+    params = {
+        "engine": engine,
+        "q": q,
+        "api_key": api_key,
+    }
 
-    payload = {"engine": engine, "q": query, "api_key": api_key}
+    if engine == "google":
+        params["num"] = min(page_size, 10)
+        params["start"] = (page - 1) * params["num"]
+    else:
+        params["page"] = page
 
-    url = f"{url}?{urlencode(payload)}"
-    response = requests.request("GET", url)
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "OpenWebUI-Search/1.0",
+    }
 
-    json_response = response.json()
-    log.info(f"results from serpapi search: {json_response}")
+    r = await client.get(endpoint, params=params, headers=headers, timeout=timeout)
 
-    results = sorted(
-        json_response.get("organic_results", []), key=lambda x: x.get("position", 0)
-    )
-    if filter_list:
-        results = get_filtered_results(results, filter_list)
-    return [
-        SearchResult(
-            link=result["link"], title=result["title"], snippet=result["snippet"]
+    if r.status_code in (401, 403):
+        raise RuntimeError(f"[{ENGINE_NAME}] Unauthorized/Forbidden")
+    if r.status_code == 429:
+        raise RuntimeError(f"[{ENGINE_NAME}] Rate limited (429)")
+
+    r.raise_for_status()
+    data = r.json() or {}
+
+    items = (data.get("organic_results") or [])
+    try:
+        items = sorted(items, key=lambda x: x.get("position", 0))
+    except Exception:
+        pass
+
+    if engine != "google":
+        items = items[:page_size]
+
+    out: List[Dict] = []
+    for it in items:
+        url = (it.get("link") or "").strip()
+        if not url:
+            continue
+        snippet = it.get("snippet")
+        if not snippet:
+            words = it.get("snippet_highlighted_words")
+            if isinstance(words, list):
+                snippet = " ".join(map(str, words))[:300]
+            else:
+                snippet = ""
+        out.append({
+            "title": it.get("title") or url,
+            "url": url,
+            "snippet": snippet,
+            "source": f"{ENGINE_NAME}:{engine}",
+        })
+    return out
+
+MAX_LIMIT = 100
+MAX_CONCURRENCY = 10
+DEFAULT_LIMIT = 30 
+DEFAULT_CONCURRENCY = 3 
+
+async def search_many_links(
+    q: str,
+    limit: int = DEFAULT_LIMIT,
+    timeout: float = 10.0,
+    page_size: int = 10,
+    max_page_concurrency: int = DEFAULT_CONCURRENCY,
+    filter_list: Optional[List[str]] = None,
+    *,
+    api_key: Optional[str] = None,
+    engine: Optional[str] = None,
+    endpoint: Optional[str] = None,
+) -> List[SearchResult]:
+    
+    limit = max(1, min(int(limit), MAX_LIMIT)) 
+    max_page_concurrency = max(1, min(int(max_page_concurrency), MAX_CONCURRENCY))
+
+    eng = (engine or _ENV_ENGINE or "google").strip().lower()
+    ep = (endpoint or _ENV_ENDPOINT).strip()
+    key = api_key or _ENV_KEY
+
+    if eng == "google":
+        limit = min(int(limit), 100)
+
+    async def _fetch(client, q_, page_, size_, t_):
+        return await _fetch_page_impl(
+            client, q_, page_, size_, t_,
+            api_key=key, engine=eng, endpoint=ep
         )
-        for result in results[:count]
-    ]
+
+    return await template_paged_engine(
+        q=q,
+        limit=limit,
+        page_size=page_size,
+        fetch_page_fn=_fetch,
+        engine_name=f"{ENGINE_NAME}:{eng}",
+        timeout=timeout,
+        max_page_concurrency=max_page_concurrency,
+        filter_list=filter_list,
+    )
