@@ -15,18 +15,12 @@
 	const i18n = getContext('i18n');
 
 	export let workflow: any;
-	export let onShare: (workflow: any) => void;
 	export let onClone: (workflow: any) => void;
 	export let onExport: (workflow: any) => void;
 	export let onDelete: (workflow: any) => void;
 	export let onClose: Function = () => {};
 
 	let show = false;
-
-	const handleShare = () => {
-		onShare(workflow);
-		show = false;
-	};
 
 	const handleClone = () => {
 		onClone(workflow);
@@ -40,11 +34,6 @@
 
 	const handleDelete = () => {
 		onDelete(workflow);
-		show = false;
-	};
-
-	const handleEdit = () => {
-		goto(`/workspace/workflows/edit?id=${workflow.id}`);
 		show = false;
 	};
 </script>
@@ -71,14 +60,6 @@
 		>
 			<DropdownMenu.Item
 				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
-				on:click={handleEdit}
-			>
-				<Pencil className="size-4" />
-				<div class="flex items-center">{$i18n.t('Edit')}</div>
-			</DropdownMenu.Item>
-
-			<DropdownMenu.Item
-				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 				on:click={handleClone}
 			>
 				<ChevronRight className="size-4" />
@@ -91,14 +72,6 @@
 			>
 				<ArrowDownTray className="size-4" />
 				<div class="flex items-center">{$i18n.t('Export')}</div>
-			</DropdownMenu.Item>
-
-			<DropdownMenu.Item
-				class="flex gap-2 items-center px-3 py-2 text-sm font-medium cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
-				on:click={handleShare}
-			>
-				<Heart className="size-4" />
-				<div class="flex items-center">{$i18n.t('Share')}</div>
 			</DropdownMenu.Item>
 
 			<hr class="border-gray-100 dark:border-gray-850 my-1" />

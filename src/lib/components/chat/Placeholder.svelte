@@ -34,9 +34,11 @@
 	export let files = [];
 
 	export let selectedToolIds = [];
+	export let selectedWorkflowIds = [];
 	export let imageGenerationEnabled = false;
 	export let codeInterpreterEnabled = false;
 	export let webSearchEnabled = false;
+	export let deepResearchEnabled = false;
 
 	export let toolServers = [];
 
@@ -192,9 +194,11 @@
 					bind:prompt
 					bind:autoScroll
 					bind:selectedToolIds
+					bind:selectedWorkflowIds
 					bind:imageGenerationEnabled
 					bind:codeInterpreterEnabled
 					bind:webSearchEnabled
+					bind:deepResearchEnabled
 					bind:atSelectedModel
 					{toolServers}
 					{transparentBackground}

@@ -47,7 +47,7 @@
 				<hr class=" border-gray-100 dark:border-gray-850 my-2" />
 
 				<div class="  mb-2.5 flex w-full justify-between">
-					<div class=" self-center text-base font-medium">
+					<div class=" self-center text-sm font-medium">
 						{$i18n.t('Deep Research')}
 					</div>
 					<div class="flex items-center relative">
@@ -58,7 +58,7 @@
 				{#if deepResearchConfig.ENABLE_DEEP_RESEARCH}
 					<div class="mb-2.5 flex w-full flex-col">
 						<div>
-							<div class=" self-center text-base font-medium mb-1">
+							<div class=" self-center text-sm font-medium mb-1">
 								{$i18n.t('Deep Research Endpoint')}
 							</div>
 

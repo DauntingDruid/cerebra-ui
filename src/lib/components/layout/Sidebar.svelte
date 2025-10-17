@@ -563,13 +563,12 @@
 						</a>
 					{/if}
 
-					<!-- Workflow导航链接已暂时注释掉 -->
-					<!-- 
-					<a class="flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-900 transition" href="/workspace/workflows" draggable="false">
-						<WorkflowIcon className=" size-5 text-gray-900 dark:text-white" strokeWidth="1.8" />
-						<span class=" text-sm">{$i18n.t('Workflows')}</span>
-					</a>
-					-->
+					{#if $user?.role === 'admin' || $user?.permissions?.workspace?.workflows}
+						<a class="flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-900 transition" href="/workspace/workflows" draggable="false">
+							<WorkflowIcon className=" size-5 text-gray-900 dark:text-white" strokeWidth="1.8" />
+							<span class=" text-sm">{$i18n.t('Workflows')}</span>
+						</a>
+					{/if}
 
 					{#if $user?.role === 'admin'}
 						<a class="flex items-center gap-2 rounded-lg px-2 py-2.5 hover:bg-gray-100 dark:hover:bg-gray-900 transition" href="/playground" draggable="false">

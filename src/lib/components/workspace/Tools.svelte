@@ -61,29 +61,6 @@
 			t.id.toLowerCase().includes(query.toLowerCase())
 	);
 
-	const shareHandler = async (tool) => {
-		const item = await getToolById(localStorage.token, tool.id).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/tools/create`, '_blank');
-
-		const messageHandler = (event) => {
-			if (event.origin !== url) return;
-			if (event.data === 'loaded') {
-				tab.postMessage(JSON.stringify(item), '*');
-				window.removeEventListener('message', messageHandler);
-			}
-		};
-
-		window.addEventListener('message', messageHandler, false);
-		console.log(item);
-	};
 
 	const cloneHandler = async (tool) => {
 		const _tool = await getToolById(localStorage.token, tool.id).catch((error) => {
@@ -372,12 +349,6 @@
 							</Tooltip>
 
 							<ToolMenu
-								editHandler={() => {
-									goto(`/workspace/tools/edit?id=${encodeURIComponent(tool.id)}`);
-								}}
-								shareHandler={() => {
-									shareHandler(tool);
-								}}
 								cloneHandler={() => {
 									cloneHandler(tool);
 								}}

@@ -237,11 +237,13 @@
 			<div>
 				<div class=" mb-1 text-base font-medium">{$i18n.t('Image Settings')}</div>
 
+				<hr class="border-gray-100 dark:border-gray-850 my-2" />
+
 				<div>
 					<div class=" py-1 flex w-full justify-between">
-						<div class=" self-center text-base font-medium">
-							{$i18n.t('Image Generation (Experimental)')}
-						</div>
+					<div class=" self-center text-sm font-medium">
+						{$i18n.t('Image Generation (Experimental)')}
+					</div>
 
 						<div class="px-1">
 							<Switch
@@ -280,7 +282,7 @@
 
 				{#if config.enabled}
 					<div class=" py-1 flex w-full justify-between">
-						<div class=" self-center text-base font-medium">{$i18n.t('Image Prompt Generation')}</div>
+						<div class=" self-center text-sm font-medium">{$i18n.t('Image Prompt Generation')}</div>
 						<div class="px-1">
 							<Switch bind:state={config.prompt_generation} />
 						</div>
@@ -311,7 +313,7 @@
 			<div class="flex flex-col gap-2">
 				{#if (config?.engine ?? 'automatic1111') === 'automatic1111'}
 					<div>
-						<div class=" mb-2 text-base font-medium">{$i18n.t('AUTOMATIC1111 Base URL')}</div>
+						<div class=" mb-2 text-sm font-medium">{$i18n.t('AUTOMATIC1111 Base URL')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<input
@@ -363,9 +365,9 @@
 					</div>
 
 					<div>
-						<div class=" mb-2 text-base font-medium">
-							{$i18n.t('AUTOMATIC1111 Api Auth String')}
-						</div>
+				<div class=" mb-2 text-sm font-medium">
+					{$i18n.t('AUTOMATIC1111 Api Auth String')}
+				</div>
 						<SensitiveInput
 							placeholder={$i18n.t('Enter api auth string (e.g. username:password)')}
 							bind:value={config.automatic1111.AUTOMATIC1111_API_AUTH}
@@ -388,7 +390,7 @@
 
 					<!---Sampler-->
 					<div>
-						<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set Sampler')}</div>
+						<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set Sampler')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<Tooltip content={$i18n.t('Enter Sampler (e.g. Euler a)')} placement="top-start">
@@ -410,7 +412,7 @@
 					</div>
 					<!---Scheduler-->
 					<div>
-						<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set Scheduler')}</div>
+						<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set Scheduler')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<Tooltip content={$i18n.t('Enter Scheduler (e.g. Karras)')} placement="top-start">
@@ -432,7 +434,7 @@
 					</div>
 					<!---CFG scale-->
 					<div>
-						<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set CFG Scale')}</div>
+						<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set CFG Scale')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<Tooltip content={$i18n.t('Enter CFG Scale (e.g. 7.0)')} placement="top-start">
@@ -447,7 +449,7 @@
 					</div>
 				{:else if config?.engine === 'comfyui'}
 					<div class="">
-						<div class=" mb-2 text-base font-medium">{$i18n.t('ComfyUI Base URL')}</div>
+						<div class=" mb-2 text-sm font-medium">{$i18n.t('ComfyUI Base URL')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<input
@@ -488,7 +490,7 @@
 					</div>
 
 					<div class="">
-						<div class=" mb-2 text-base font-medium">{$i18n.t('ComfyUI API Key')}</div>
+						<div class=" mb-2 text-sm font-medium">{$i18n.t('ComfyUI API Key')}</div>
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
 								<SensitiveInput
@@ -501,7 +503,7 @@
 					</div>
 
 					<div class="">
-						<div class=" mb-2 text-base font-medium">{$i18n.t('ComfyUI Workflow')}</div>
+						<div class=" mb-2 text-sm font-medium">{$i18n.t('ComfyUI Workflow')}</div>
 
 						{#if config.comfyui.COMFYUI_WORKFLOW}
 							<textarea
@@ -551,7 +553,7 @@
 
 					{#if config.comfyui.COMFYUI_WORKFLOW}
 						<div class="">
-							<div class=" mb-2 text-base font-medium">{$i18n.t('ComfyUI Workflow Nodes')}</div>
+							<div class=" mb-2 text-sm font-medium">{$i18n.t('ComfyUI Workflow Nodes')}</div>
 
 							<div class="text-sm flex flex-col gap-1.5">
 								{#each requiredWorkflowNodes as node}
@@ -597,7 +599,7 @@
 					{/if}
 				{:else if config?.engine === 'openai'}
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('OpenAI API Config')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('OpenAI API Config')}</div>
 
 						<div class="flex gap-2 mb-1">
 							<input
@@ -615,7 +617,7 @@
 					</div>
 				{:else if config?.engine === 'gemini'}
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('Gemini API Config')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('Gemini API Config')}</div>
 
 						<div class="flex gap-2 mb-1">
 							<input
@@ -635,10 +637,8 @@
 			</div>
 
 			{#if config?.enabled}
-				<hr class=" border-gray-100 dark:border-gray-850" />
-
 				<div>
-					<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set Default Model')}</div>
+					<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set Default Model')}</div>
 					<div class="flex w-full">
 						<div class="flex-1 mr-2">
 							<div class="flex w-full">
@@ -665,7 +665,7 @@
 				</div>
 
 				<div>
-					<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set Image Size')}</div>
+					<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set Image Size')}</div>
 					<div class="flex w-full">
 						<div class="flex-1 mr-2">
 							<Tooltip content={$i18n.t('Enter Image Size (e.g. 512x512)')} placement="top-start">
@@ -681,7 +681,7 @@
 				</div>
 
 				<div>
-					<div class=" mb-2.5 text-base font-medium">{$i18n.t('Set Steps')}</div>
+					<div class=" mb-2.5 text-sm font-medium">{$i18n.t('Set Steps')}</div>
 					<div class="flex w-full">
 						<div class="flex-1 mr-2">
 							<Tooltip content={$i18n.t('Enter Number of Steps (e.g. 50)')} placement="top-start">

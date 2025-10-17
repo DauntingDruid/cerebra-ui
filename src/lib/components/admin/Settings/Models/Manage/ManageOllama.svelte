@@ -573,22 +573,21 @@
 						<div>
 							<Tooltip content="Update All Models" placement="top">
 								<button
-									class="flex gap-2 items-center bg-transparent rounded-lg transition"
+									class="flex gap-2 items-center bg-transparent rounded-lg transition hover:bg-gray-100 dark:hover:bg-gray-800 p-1"
 									on:click={() => {
 										updateModelsHandler();
 									}}
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
-										viewBox="0 0 16 16"
+										viewBox="0 0 20 20"
 										fill="currentColor"
 										class="w-4 h-4"
 									>
 										<path
-											d="M7 1a.75.75 0 0 1 .75.75V6h-1.5V1.75A.75.75 0 0 1 7 1ZM6.25 6v2.94L5.03 7.72a.75.75 0 0 0-1.06 1.06l2.5 2.5a.75.75 0 0 0 1.06 0l2.5-2.5a.75.75 0 1 0-1.06-1.06L7.75 8.94V6H10a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.25Z"
-										/>
-										<path
-											d="M4.268 14A2 2 0 0 0 6 15h6a2 2 0 0 0 2-2v-3a2 2 0 0 0-1-1.732V11a3 3 0 0 1-3 3H4.268Z"
+											fill-rule="evenodd"
+											d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+											clip-rule="evenodd"
 										/>
 									</svg>
 								</button>

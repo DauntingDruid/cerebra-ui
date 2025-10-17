@@ -38,7 +38,7 @@
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
 	import FilesOverlay from './MessageInput/FilesOverlay.svelte';
 	import Commands from './MessageInput/Commands.svelte';
-	// import WorkflowMenu from './MessageInput/WorkflowMenu.svelte'; // 已暂时注释掉
+	import WorkflowMenu from './MessageInput/WorkflowMenu.svelte';
 
 	import RichTextInput from '../common/RichTextInput.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
@@ -48,11 +48,10 @@
 	import XMark from '../icons/XMark.svelte';
 	import Headphone from '../icons/Headphone.svelte';
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
-	import DeepResearchIcon from '../icons/DeepResearchIcon.svelte';
 	import PhotoSolid from '../icons/PhotoSolid.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import CommandLine from '../icons/CommandLine.svelte';
-	// import WorkflowIcon from '../icons/WorkflowIcon.svelte'; // 已暂时注释掉
+	import WorkflowIcon from '../icons/WorkflowIcon.svelte';
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import ToolServersModal from './ToolServersModal.svelte';
 	import Wrench from '../icons/Wrench.svelte';
@@ -82,7 +81,7 @@
 	export let toolServers = [];
 
 	export let selectedToolIds = [];
-	// export let selectedWorkflowIds = []; // 已暂时注释掉
+	export let selectedWorkflowIds = [];
 
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
@@ -93,30 +92,17 @@
 		prompt,
 		files,
 		selectedToolIds,
-		// selectedWorkflowIds, // 已暂时注释掉
+		selectedWorkflowIds,
 		imageGenerationEnabled,
 		webSearchEnabled,
 		deepResearchEnabled,
 	});
 
 	let showTools = false;
-	// let showWorkflows = false; // 已暂时注释掉
+	let showWorkflows = false;
 
 	let loaded = false;
 
-	// Deep Research配置函数
-	function getDeepResearchEnabled() {
-		try {
-			const saved = localStorage.getItem('deepResearchConfig');
-			if (saved) {
-				const config = JSON.parse(saved);
-				return config.ENABLE_DEEP_RESEARCH === true;
-			}
-		} catch (error) {
-			console.error('Error loading deep research config:', error);
-		}
-		return true; // 默认开启
-	}
 	let recording = false;
 
 	let isComposing = false;
@@ -1150,6 +1136,30 @@
 											{/if}
 
 											{#if $_user}
+												<!-- Workflow selector button - positioned before web search -->
+												<WorkflowMenu
+													bind:selectedWorkflowIds
+													bind:deepResearchEnabled
+													onClose={() => {
+														showWorkflows = false;
+													}}
+												>
+													<Tooltip content={$i18n.t('Select Workflows')} placement="top">
+														<button
+															type="button"
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowIds.length > 0 || deepResearchEnabled
+																? 'bg-yellow-100 dark:bg-yellow-500/20 border-yellow-400/20 text-yellow-700 dark:text-yellow-300'
+																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+														>
+															<WorkflowIcon className="size-5" strokeWidth="1.75" />
+															<span
+																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
+																>{$i18n.t('Workflow')}</span
+															>
+														</button>
+													</Tooltip>
+												</WorkflowMenu>
+
 												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || $_user?.permissions?.features?.web_search)}
 													<Tooltip content={$i18n.t('Search the internet')} placement="top">
 														<button
@@ -1169,23 +1179,6 @@
 													</Tooltip>
 												{/if}
 
-												{#if getDeepResearchEnabled()}
-													<Tooltip content={$i18n.t('Deep Research')} placement="top">
-														<button
-															on:click|preventDefault={() => (deepResearchEnabled = !deepResearchEnabled)}
-															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {deepResearchEnabled
-																? 'bg-purple-100 dark:bg-purple-500/20 border-purple-400/20 text-purple-500 dark:text-purple-400'
-																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
-														>
-															<DeepResearchIcon className="size-5" strokeWidth="1.75" />
-															<span
-																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
-																>{$i18n.t('Deep Research')}</span
-															>
-														</button>
-													</Tooltip>
-												{/if}
 
 												{#if $config?.features?.enable_image_generation && ($_user.role === 'admin' || $_user?.permissions?.features?.image_generation)}
 													<Tooltip content={$i18n.t('Generate an image')} placement="top">

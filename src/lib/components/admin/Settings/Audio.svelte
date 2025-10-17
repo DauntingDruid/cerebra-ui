@@ -177,8 +177,10 @@
 			<div>
 				<div class=" mb-1 text-base font-medium">{$i18n.t('STT Settings')}</div>
 
+				<hr class="border-gray-100 dark:border-gray-850 my-2" />
+
 				<div class=" py-0.5 flex w-full justify-between">
-					<div class=" self-center text-base font-medium">{$i18n.t('Speech-to-Text Engine')}</div>
+					<div class=" self-center text-sm font-medium">{$i18n.t('Speech-to-Text Engine')}</div>
 					<div class="flex items-center relative">
 						<select
 							class="dark:bg-gray-900 cursor-pointer w-fit pr-8 rounded-sm px-2 p-1 text-sm bg-transparent outline-hidden text-right"
@@ -208,10 +210,8 @@
 						</div>
 					</div>
 
-					<hr class="border-gray-100 dark:border-gray-850 my-2" />
-
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('STT Model')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('STT Model')}</div>
 						<div class="flex w-full">
 							<div class="flex-1">
 								<input
@@ -234,10 +234,8 @@
 						</div>
 					</div>
 
-					<hr class="border-gray-100 dark:border-gray-850 my-2" />
-
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('STT Model')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('STT Model')}</div>
 						<div class="flex w-full">
 							<div class="flex-1">
 								<input
@@ -274,10 +272,8 @@
 							/>
 						</div>
 
-						<hr class="border-gray-100 dark:border-gray-850 my-2" />
-
 						<div>
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('Language Locales')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('Language Locales')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -291,7 +287,7 @@
 					</div>
 				{:else if STT_ENGINE === ''}
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('STT Model')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('STT Model')}</div>
 
 						<div class="flex w-full">
 							<div class="flex-1 mr-2">
@@ -357,8 +353,8 @@
 							</button>
 						</div>
 
-						<div class="mt-2 mb-1 text-sm text-gray-400 dark:text-gray-500">
-							{$i18n.t(`Open WebUI uses faster-whisper internally.`)}
+						<div class="mt-4 mb-4 text-sm text-gray-400 dark:text-gray-500">
+							{$i18n.t(`CerebraUI uses faster-whisper internally.`)}
 
 							<a
 								class=" hover:underline dark:text-gray-200 text-gray-800"
@@ -374,13 +370,13 @@
 				{/if}
 			</div>
 
-			<hr class="border-gray-100 dark:border-gray-850" />
-
 			<div>
 				<div class=" mb-1 text-base font-medium">{$i18n.t('TTS Settings')}</div>
 
+				<hr class="border-gray-100 dark:border-gray-850 my-2" />
+
 				<div class=" py-0.5 flex w-full justify-between">
-					<div class=" self-center text-base font-medium">{$i18n.t('Text-to-Speech Engine')}</div>
+					<div class=" self-center text-sm font-medium">{$i18n.t('Text-to-Speech Engine')}</div>
 					<div class="flex items-center relative">
 						<select
 							class=" dark:bg-gray-900 w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-sm bg-transparent outline-hidden text-right"
@@ -452,11 +448,9 @@
 					</div>
 				{/if}
 
-				<hr class="border-gray-100 dark:border-gray-850 my-2" />
-
 				{#if TTS_ENGINE === ''}
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Voice')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Voice')}</div>
 						<div class="flex w-full">
 							<div class="flex-1">
 								<select
@@ -477,7 +471,7 @@
 					</div>
 				{:else if TTS_ENGINE === 'transformers'}
 					<div>
-						<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Model')}</div>
+						<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Model')}</div>
 						<div class="flex w-full">
 							<div class="flex-1">
 								<input
@@ -492,8 +486,8 @@
 								</datalist>
 							</div>
 						</div>
-						<div class="mt-2 mb-1 text-sm text-gray-400 dark:text-gray-500">
-							{$i18n.t(`Open WebUI uses SpeechT5 and CMU Arctic speaker embeddings.`)}
+						<div class="mt-4 mb-4 text-sm text-gray-400 dark:text-gray-500">
+							{$i18n.t(`CerebraUI uses SpeechT5 and CMU Arctic speaker embeddings.`)}
 
 							To learn more about SpeechT5,
 
@@ -519,7 +513,7 @@
 				{:else if TTS_ENGINE === 'openai'}
 					<div class=" flex gap-2">
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Voice')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Voice')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -538,7 +532,7 @@
 							</div>
 						</div>
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Model')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Model')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -560,7 +554,7 @@
 				{:else if TTS_ENGINE === 'elevenlabs'}
 					<div class=" flex gap-2">
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Voice')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Voice')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -579,7 +573,7 @@
 							</div>
 						</div>
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Model')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Model')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -601,7 +595,7 @@
 				{:else if TTS_ENGINE === 'azure'}
 					<div class=" flex gap-2">
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">{$i18n.t('TTS Voice')}</div>
+							<div class=" mb-1.5 text-sm font-medium">{$i18n.t('TTS Voice')}</div>
 							<div class="flex w-full">
 								<div class="flex-1">
 									<input
@@ -620,7 +614,7 @@
 							</div>
 						</div>
 						<div class="w-full">
-							<div class=" mb-1.5 text-base font-medium">
+							<div class=" mb-1.5 text-sm font-medium">
 								{$i18n.t('Output format')}
 								<a
 									href="https://learn.microsoft.com/en-us/azure/ai-services/speech-service/rest-text-to-speech?tabs=streaming#audio-outputs"
@@ -643,10 +637,8 @@
 					</div>
 				{/if}
 
-				<hr class="border-gray-100 dark:border-gray-850 my-2" />
-
 				<div class="pt-0.5 flex w-full justify-between">
-					<div class="self-center text-base font-medium">{$i18n.t('Response splitting')}</div>
+					<div class="self-center text-sm font-medium">{$i18n.t('Response splitting')}</div>
 					<div class="flex items-center relative">
 						<select
 							class="dark:bg-gray-900 w-fit pr-8 cursor-pointer rounded-sm px-2 p-1 text-sm bg-transparent outline-hidden text-right"
@@ -661,7 +653,7 @@
 						</select>
 					</div>
 				</div>
-				<div class="mt-2 mb-1 text-sm text-gray-400 dark:text-gray-500">
+				<div class="mt-4 mb-2 text-sm text-gray-400 dark:text-gray-500">
 					{$i18n.t(
 						"Control how message text is split for TTS requests. 'Punctuation' splits into sentences, 'paragraphs' splits into paragraphs, and 'none' keeps the message as a single string."
 					)}
@@ -669,9 +661,9 @@
 			</div>
 		</div>
 	</div>
-	<div class="flex justify-end text-base font-medium">
+	<div class="flex justify-end text-sm font-medium">
 		<button
-			class="px-3.5 py-1.5 text-base font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
+			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 			type="submit"
 		>
 			{$i18n.t('Save')}
