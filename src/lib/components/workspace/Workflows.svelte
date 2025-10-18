@@ -55,29 +55,6 @@
 			w.id.toLowerCase().includes(query.toLowerCase())
 	);
 
-	const shareHandler = async (workflow: any) => {
-		const item = await getWorkflowById(localStorage.token, workflow.id).catch((error: any) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		toast.success($i18n.t('Redirecting you to Open WebUI Community'));
-
-		const url = 'https://openwebui.com';
-
-		const tab = await window.open(`${url}/workflows/create`, '_blank');
-
-		const messageHandler = (event: any) => {
-			if (event.origin !== url) return;
-			if (event.data === 'loaded') {
-				tab?.postMessage(JSON.stringify(item), '*');
-				window.removeEventListener('message', messageHandler);
-			}
-		};
-
-		window.addEventListener('message', messageHandler, false);
-		console.log(item);
-	};
 
 	const cloneHandler = async (workflow: any) => {
 		const _workflow = await getWorkflowById(localStorage.token, workflow.id).catch((error: any) => {
@@ -338,7 +315,6 @@
 								{:else}
 									<WorkflowMenu
 										{workflow}
-										onShare={shareHandler}
 										onClone={cloneHandler}
 										onExport={exportHandler}
 										onDelete={() => {

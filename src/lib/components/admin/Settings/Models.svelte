@@ -243,7 +243,7 @@
 								showManageModal = true;
 							}}
 						>
-							<ArrowDownTray />
+							<EllipsisHorizontal />
 						</button>
 					</Tooltip>
 

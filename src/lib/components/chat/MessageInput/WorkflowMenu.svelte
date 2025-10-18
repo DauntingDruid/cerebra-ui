@@ -10,45 +10,50 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import WorkflowIcon from '$lib/components/icons/WorkflowIcon.svelte';
+	import DeepResearchIcon from '$lib/components/icons/DeepResearchIcon.svelte';
 
 	const i18n = getContext('i18n');
 
 	export let selectedWorkflowIds: string[] = [];
+	export let deepResearchEnabled: boolean = false;
 	export let onClose: Function;
 
 	let workflows: Record<string, any> = {};
 	let show = false;
 
-	$: if (show) {
+	// Initialize workflows immediately when component loads, not just when dropdown opens
+	onMount(() => {
 		init();
+	});
+
+	$: if (show) {
+		init(); // Also re-init when dropdown opens to ensure state is current
 	}
 
-	// 写死的数据
+	// Mock workflow data - only Deep Research for now, others will come from backend
 	const mockWorkflows = [
 		{
-			id: 'workflow-1',
-			name: 'Test Workflow',
-			description: 'A test workflow for demonstration'
-		},
-		{
-			id: 'workflow-2',
-			name: 'Data Processing Workflow',
-			description: 'Process data through multiple steps'
-		},
-		{
-			id: 'workflow-3',
-			name: 'Content Generation Workflow',
-			description: 'Generate content using AI models'
+			id: 'deep-research',
+			name: 'Deep Research',
+			description: 'Comprehensive research with multiple sources'
 		}
 	];
 
 	const init = async () => {
-		// 使用写死的数据
-		workflows = mockWorkflows.reduce((a: Record<string, any>, workflow: any) => {
+		// TODO: Get workflows from backend when API is available
+		// For now, show Deep Research by default (until backend config is ready)
+		// TODO: Uncomment backend config check when ready:
+		// const showDeepResearch = $config?.features?.enable_deep_research && 
+		// 	($user?.role === 'admin' || $user?.permissions?.features?.deep_research);
+		// const workflowsToShow = showDeepResearch ? mockWorkflows : [];
+		
+		const workflowsToShow = mockWorkflows;
+
+		workflows = workflowsToShow.reduce((a: Record<string, any>, workflow: any) => {
 			a[workflow.id] = {
 				name: workflow.name,
 				description: workflow.description,
-				enabled: selectedWorkflowIds.includes(workflow.id)
+				enabled: workflow.id === 'deep-research' ? deepResearchEnabled : selectedWorkflowIds.includes(workflow.id)
 			};
 			return a;
 		}, {});
@@ -94,7 +99,11 @@
 									className="flex flex-1 gap-2 items-center"
 								>
 									<div class="shrink-0">
-										<WorkflowIcon className="size-4" strokeWidth="1.75" />
+										{#if workflowId === 'deep-research'}
+											<DeepResearchIcon className="size-4" strokeWidth="1.75" />
+										{:else}
+											<WorkflowIcon className="size-4" strokeWidth="1.75" />
+										{/if}
 									</div>
 
 									<div class="truncate">{workflows[workflowId].name}</div>
@@ -106,11 +115,21 @@
 									state={workflows[workflowId].enabled}
 									on:change={async (e) => {
 										const state = e.detail;
-										await tick();
-										if (state) {
-											selectedWorkflowIds = [...selectedWorkflowIds, workflowId];
+										console.log('Switch changed:', { workflowId, state, currentIds: selectedWorkflowIds });
+										
+										if (workflowId === 'deep-research') {
+											// Direct update for Deep Research to avoid timing issues
+											deepResearchEnabled = state;
+											console.log('Deep Research directly updated:', deepResearchEnabled);
 										} else {
-											selectedWorkflowIds = selectedWorkflowIds.filter((id) => id !== workflowId);
+											// Keep existing logic for other workflows
+											await tick();
+											if (state) {
+												selectedWorkflowIds = [...selectedWorkflowIds, workflowId];
+											} else {
+												selectedWorkflowIds = selectedWorkflowIds.filter((id) => id !== workflowId);
+											}
+											console.log('Updated selectedWorkflowIds:', selectedWorkflowIds);
 										}
 									}}
 								/>
@@ -118,8 +137,6 @@
 						</button>
 					{/each}
 				</div>
-
-				<hr class="border-black/5 dark:border-white/5 my-1" />
 			{/if}
 		</DropdownMenu.Content>
 	</div>

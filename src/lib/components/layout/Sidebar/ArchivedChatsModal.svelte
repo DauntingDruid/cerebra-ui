@@ -110,7 +110,7 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 20 20"
 							fill="currentColor"
-							class="w-4 h-4"
+							class="w-5 h-5"
 						>
 							<path
 								fill-rule="evenodd"
@@ -134,7 +134,7 @@
 							<div class="relative overflow-x-auto">
 								<table class="w-full text-sm text-left text-gray-600 dark:text-gray-400 table-auto">
 									<thead
-										class="text-xs text-gray-700 uppercase bg-transparent dark:text-gray-200 border-b-2 border-gray-50 dark:border-gray-850"
+										class="text-sm text-gray-700 uppercase bg-transparent dark:text-gray-200 border-b-2 border-gray-50 dark:border-gray-850"
 									>
 										<tr>
 											<th scope="col" class="px-3 py-2"> {$i18n.t('Name')} </th>
@@ -181,7 +181,7 @@
 																	viewBox="0 0 24 24"
 																	stroke-width="1.5"
 																	stroke="currentColor"
-																	class="size-4"
+																	class="size-5"
 																>
 																	<path
 																		stroke-linecap="round"
@@ -205,7 +205,7 @@
 																	viewBox="0 0 24 24"
 																	stroke-width="1.5"
 																	stroke="currentColor"
-																	class="w-4 h-4"
+																	class="w-5 h-5"
 																>
 																	<path
 																		stroke-linecap="round"
@@ -224,9 +224,9 @@
 							</div>
 						</div>
 
-						<div class="flex flex-wrap text-sm font-medium gap-1.5 mt-2 m-1 justify-end w-full">
+						<div class="flex flex-wrap text-sm font-medium gap-1.5 mt-6 m-1 justify-end w-full">
 							<button
-								class=" px-3.5 py-1.5 font-medium hover:bg-black/5 dark:hover:bg-white/5 outline outline-1 outline-gray-300 dark:outline-gray-800 rounded-3xl"
+								class="px-3.5 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 								on:click={() => {
 									showUnarchiveAllConfirmDialog = true;
 								}}
@@ -235,7 +235,7 @@
 							</button>
 
 							<button
-								class="px-3.5 py-1.5 font-medium hover:bg-black/5 dark:hover:bg-white/5 outline outline-1 outline-gray-300 dark:outline-gray-800 rounded-3xl"
+								class="px-3.5 py-2 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 								on:click={() => {
 									exportChatsHandler();
 								}}

@@ -24,6 +24,9 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - WEBSOCKET_MANAGER=redis
       - WEBSOCKET_REDIS_URL=redis://redis:6379/0
+      - ENABLE_CHAT_CACHE=true
+      - CHAT_CACHE_MAX_RECENT=3
+      - CHAT_CACHE_TTL_SECONDS=900
     volumes:
       - open-webui:/app/backend/data
     extra_hosts:

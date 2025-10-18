@@ -121,27 +121,17 @@
 	$: selectedModelIds = atSelectedModel !== undefined ? [atSelectedModel.id] : selectedModels;
 
 	let selectedToolIds = [];
+	let selectedWorkflowIds = [];
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
 	let deepResearchEnabled = false;
 	let codeInterpreterEnabled = false;
 	let selectedWorkflowId = null;
 
+	// Deep Research is now directly bound to MessageInput, no need for reactive conversion
+
 	let chat = null;
 
-	// Deep Research配置函数
-	function getDeepResearchEnabled() {
-		try {
-			const saved = localStorage.getItem('deepResearchConfig');
-			if (saved) {
-				const config = JSON.parse(saved);
-				return config.ENABLE_DEEP_RESEARCH === true;
-			}
-		} catch (error) {
-			console.error('Error loading deep research config:', error);
-		}
-		return true; // 默认开启
-	}
 	let tags = [];
 
 	let history = {
@@ -165,8 +155,9 @@
 			prompt = '';
 			files = [];
 			selectedToolIds = [];
+			selectedWorkflowIds = [];
 			webSearchEnabled = false;
-			deepResearchEnabled = false;
+			deepResearchEnabled = true; // Default to enabled like Web Search
 			imageGenerationEnabled = false;
 
 			if (chatIdProp && (await loadChat())) {
@@ -180,10 +171,17 @@
 						prompt = input.prompt;
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
+						selectedWorkflowIds = input.selectedWorkflowIds || [];
 						webSearchEnabled = input.webSearchEnabled;
-						deepResearchEnabled = input.deepResearchEnabled;
+						deepResearchEnabled = input.deepResearchEnabled || false;
+						// Handle legacy deepResearchEnabled from localStorage
+						if (input.deepResearchEnabled && !selectedWorkflowIds.includes('deep-research')) {
+							selectedWorkflowIds = [...selectedWorkflowIds, 'deep-research'];
+						}
 						imageGenerationEnabled = input.imageGenerationEnabled;
-					} catch (e) {}
+					} catch (e) {
+						// Keep default values if localStorage parsing fails
+					}
 				}
 
 				window.setTimeout(() => scrollToBottom(), 0);
@@ -440,15 +438,17 @@
 				prompt = input.prompt;
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
+				selectedWorkflowIds = input.selectedWorkflowIds || [];
 				webSearchEnabled = input.webSearchEnabled;
-				deepResearchEnabled = input.deepResearchEnabled;
+				deepResearchEnabled = input.deepResearchEnabled || false;
 				imageGenerationEnabled = input.imageGenerationEnabled;
 			} catch (e) {
 				prompt = '';
 				files = [];
 				selectedToolIds = [];
+				selectedWorkflowIds = [];
 				webSearchEnabled = false;
-				deepResearchEnabled = false;
+				deepResearchEnabled = true; // Default to enabled like Web Search
 				imageGenerationEnabled = false;
 			}
 		}
@@ -1407,6 +1407,7 @@
 					modelName: model.name ?? model.id,
 					modelIdx: modelIdx ? modelIdx : _modelIdx,
 					userContext: null,
+					deepResearchEnabled: deepResearchEnabled,
 					timestamp: Math.floor(Date.now() / 1000) // Unix epoch
 				};
 
@@ -1629,7 +1630,16 @@
 						($user?.role === 'admin' ||($user?.permissions?.features?.web_search ?? true))
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
 							: false,
-					deep_research: getDeepResearchEnabled() ? deepResearchEnabled : false
+					// TODO: Uncomment backend config check when ready:
+					// deep_research: $config?.features?.enable_deep_research &&
+					// 	($user?.role === 'admin' || $user?.permissions?.features?.deep_research)
+					// 		? deepResearchEnabled
+					// 		: false
+					// For now, allow Deep Research by default:
+					deep_research: (() => {
+						console.log('Deep Research in API call:', { deepResearchEnabled, webSearchEnabled, imageGenerationEnabled });
+						return deepResearchEnabled;
+					})()
 				},
 				variables: {
 					...getPromptVariables(
@@ -2039,6 +2049,7 @@
 									{chatActionHandler}
 									{addMessages}
 									bottomPadding={files.length > 0}
+									{deepResearchEnabled}
 								/>
 							</div>
 						</div>
@@ -2055,8 +2066,8 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
+								bind:selectedWorkflowIds
 								bind:deepResearchEnabled
-								bind:selectedWorkflowId
 								bind:atSelectedModel
 								toolServers={$toolServers}
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
@@ -2107,6 +2118,7 @@
 								bind:prompt
 								bind:autoScroll
 								bind:selectedToolIds
+								bind:selectedWorkflowIds
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled

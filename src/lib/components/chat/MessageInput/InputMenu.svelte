@@ -14,6 +14,7 @@
 	import Switch from '$lib/components/common/Switch.svelte';
 	import GlobeAltSolid from '$lib/components/icons/GlobeAltSolid.svelte';
 	import WrenchSolid from '$lib/components/icons/WrenchSolid.svelte';
+	import ToolsIcon from '$lib/components/icons/ToolsIcon.svelte';
 	import CameraSolid from '$lib/components/icons/CameraSolid.svelte';
 	import PhotoSolid from '$lib/components/icons/PhotoSolid.svelte';
 	import CommandLineSolid from '$lib/components/icons/CommandLineSolid.svelte';
@@ -117,7 +118,7 @@
 									className="flex flex-1 gap-2 items-center"
 								>
 									<div class="shrink-0">
-										<WrenchSolid />
+										<ToolsIcon className="size-4" strokeWidth="1.75" />
 									</div>
 
 									<div class=" truncate">{tools[toolId].name}</div>

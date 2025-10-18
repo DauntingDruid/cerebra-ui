@@ -256,7 +256,7 @@
 						<div class="flex justify-between pt-3 text-sm font-medium gap-1.5">
 							<Tooltip content={$i18n.t('This will delete all models including custom models')}>
 								<button
-									class="px-3.5 py-1.5 text-sm font-medium dark:bg-black dark:hover:bg-gray-950 dark:text-white bg-white text-black hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center"
+									class="px-3.5 py-1.5 text-sm font-medium dark:bg-black dark:hover:bg-gray-950 dark:text-white bg-white text-black hover:bg-gray-100 transition rounded-lg flex flex-row space-x-1 items-center"
 									type="button"
 									on:click={() => {
 										showResetModal = true;
@@ -268,7 +268,7 @@
 							</Tooltip>
 
 							<button
-								class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full flex flex-row space-x-1 items-center {loading
+								class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg flex flex-row space-x-1 items-center {loading
 									? ' cursor-not-allowed'
 									: ''}"
 								type="submit"

@@ -1,6 +1,6 @@
 {
-	"name": "open-webui",
-	"version": "0.6.5",
+	"name": "cerebra-ui",
+	"version": "0.1.0",
 	"private": true,
 	"scripts": {
 		"dev": "npm run pyodide:fetch && vite dev --host",

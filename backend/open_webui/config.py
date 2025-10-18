@@ -303,6 +303,28 @@ class AppConfig:
 
         return self._state[key].value
 
+####################################
+# Chat Cache (Redis)
+####################################
+
+ENABLE_CHAT_CACHE = PersistentConfig(
+    "ENABLE_CHAT_CACHE",
+    "cache.chat.enable",
+    os.environ.get("ENABLE_CHAT_CACHE", "True").lower() == "true",
+)
+
+CHAT_CACHE_MAX_RECENT = PersistentConfig(
+    "CHAT_CACHE_MAX_RECENT",
+    "cache.chat.max_recent",
+    int(os.environ.get("CHAT_CACHE_MAX_RECENT", "3")),
+)
+
+CHAT_CACHE_TTL_SECONDS = PersistentConfig(
+    "CHAT_CACHE_TTL_SECONDS",
+    "cache.chat.ttl_seconds",
+    int(os.environ.get("CHAT_CACHE_TTL_SECONDS", "900")),  # 15 minutes default
+)
+
 
 ####################################
 # WEBUI_AUTH (Required for security)

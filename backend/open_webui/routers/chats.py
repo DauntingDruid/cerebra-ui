@@ -22,6 +22,11 @@ from pydantic import BaseModel
 
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.chat_cache import (
+    get_cached_chat,
+    set_cached_chat,
+    touch_recent,
+)
 from open_webui.utils.access_control import has_permission
 
 log = logging.getLogger(__name__)
@@ -341,11 +346,26 @@ async def get_user_chat_list_by_tag_name(
 
 
 @router.get("/{id}", response_model=Optional[ChatResponse])
-async def get_chat_by_id(id: str, user=Depends(get_verified_user)):
+async def get_chat_by_id(id: str, request: Request, user=Depends(get_verified_user)):
+    # Try cache first
+    cached = get_cached_chat(request.app, id)
+    if cached:
+        try:
+            touch_recent(request.app, user.id, id)
+        except Exception:
+            pass
+        return ChatResponse(**cached)
+
     chat = Chats.get_chat_by_id_and_user_id(id, user.id)
 
     if chat:
-        return ChatResponse(**chat.model_dump())
+        response = ChatResponse(**chat.model_dump())
+        try:
+            set_cached_chat(request.app, id, response.model_dump())
+            touch_recent(request.app, user.id, id)
+        except Exception:
+            pass
+        return response
 
     else:
         raise HTTPException(

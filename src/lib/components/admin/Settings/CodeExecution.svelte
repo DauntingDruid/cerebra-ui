@@ -47,7 +47,7 @@
 
 					<div class="mb-2.5">
 						<div class=" flex w-full justify-between">
-							<div class=" self-center text-base font-medium">
+							<div class=" self-center text-sm font-medium">
 								{$i18n.t('Enable Code Execution')}
 							</div>
 
@@ -57,7 +57,7 @@
 
 					<div class="mb-2.5">
 						<div class="flex w-full justify-between">
-							<div class=" self-center text-base font-medium">{$i18n.t('Code Execution Engine')}</div>
+							<div class=" self-center text-sm font-medium">{$i18n.t('Code Execution Engine')}</div>
 							<div class="flex items-center relative">
 								<select
 									class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 p-1 text-sm bg-transparent outline-hidden text-right"
@@ -84,7 +84,7 @@
 
 					{#if config.CODE_EXECUTION_ENGINE === 'jupyter'}
 						<div class="mb-2.5 flex flex-col gap-1.5 w-full">
-							<div class="text-base font-medium">
+							<div class="text-sm font-medium">
 								{$i18n.t('Jupyter URL')}
 							</div>
 
@@ -103,7 +103,7 @@
 
 						<div class="mb-2.5 flex flex-col gap-1.5 w-full">
 							<div class=" flex gap-2 w-full items-center justify-between">
-								<div class="text-base font-medium">
+								<div class="text-sm font-medium">
 									{$i18n.t('Jupyter Auth')}
 								</div>
 
@@ -144,7 +144,7 @@
 						</div>
 
 						<div class="flex gap-2 w-full items-center justify-between">
-							<div class="text-base font-medium">
+							<div class="text-sm font-medium">
 								{$i18n.t('Code Execution Timeout')}
 							</div>
 
@@ -170,7 +170,7 @@
 
 					<div class="mb-2.5">
 						<div class=" flex w-full justify-between">
-							<div class=" self-center text-base font-medium">
+							<div class=" self-center text-sm font-medium">
 								{$i18n.t('Enable Code Interpreter')}
 							</div>
 
@@ -181,7 +181,7 @@
 					{#if config.ENABLE_CODE_INTERPRETER}
 						<div class="mb-2.5">
 							<div class="  flex w-full justify-between">
-								<div class=" self-center text-base font-medium">
+								<div class=" self-center text-sm font-medium">
 									{$i18n.t('Code Interpreter Engine')}
 								</div>
 								<div class="flex items-center relative">
@@ -210,7 +210,7 @@
 
 						{#if config.CODE_INTERPRETER_ENGINE === 'jupyter'}
 							<div class="mb-2.5 flex flex-col gap-1.5 w-full">
-								<div class="text-base font-medium">
+								<div class="text-sm font-medium">
 									{$i18n.t('Jupyter URL')}
 								</div>
 
@@ -229,7 +229,7 @@
 
 							<div class="mb-2.5 flex flex-col gap-1.5 w-full">
 								<div class="flex gap-2 w-full items-center justify-between">
-									<div class="text-base font-medium">
+									<div class="text-sm font-medium">
 										{$i18n.t('Jupyter Auth')}
 									</div>
 
@@ -270,7 +270,7 @@
 							</div>
 
 							<div class="flex gap-2 w-full items-center justify-between">
-								<div class="text-base font-medium">
+								<div class="text-sm font-medium">
 									{$i18n.t('Code Execution Timeout')}
 								</div>
 
@@ -292,7 +292,7 @@
 
 						<div>
 							<div class="py-0.5 w-full">
-								<div class=" mb-2.5 text-base font-medium">
+								<div class=" mb-2.5 text-sm font-medium">
 									{$i18n.t('Code Interpreter Prompt Template')}
 								</div>
 
@@ -316,9 +316,9 @@
 			</div>
 		{/if}
 	</div>
-	<div class="flex justify-end pt-3 text-base font-medium">
+	<div class="flex justify-end pt-3 text-sm font-medium">
 		<button
-			class="px-3.5 py-1.5 text-base font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
+			class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-lg"
 			type="submit"
 		>
 			{$i18n.t('Save')}

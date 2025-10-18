@@ -38,8 +38,8 @@
 	import VoiceRecording from './MessageInput/VoiceRecording.svelte';
 	import FilesOverlay from './MessageInput/FilesOverlay.svelte';
 	import Commands from './MessageInput/Commands.svelte';
-	// import WorkflowMenu from './MessageInput/WorkflowMenu.svelte'; // 已暂时注释掉
-	import WorkflowSelector from './WorkflowSelector.svelte';
+	import WorkflowMenu from './MessageInput/WorkflowMenu.svelte';
+
 	import RichTextInput from '../common/RichTextInput.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 	import FileItem from '../common/FileItem.svelte';
@@ -48,11 +48,10 @@
 	import XMark from '../icons/XMark.svelte';
 	import Headphone from '../icons/Headphone.svelte';
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
-	import DeepResearchIcon from '../icons/DeepResearchIcon.svelte';
 	import PhotoSolid from '../icons/PhotoSolid.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import CommandLine from '../icons/CommandLine.svelte';
-	// import WorkflowIcon from '../icons/WorkflowIcon.svelte'; // 已暂时注释掉
+	import WorkflowIcon from '../icons/WorkflowIcon.svelte';
 	import { KokoroWorker } from '$lib/workers/KokoroWorker';
 	import ToolServersModal from './ToolServersModal.svelte';
 	import Wrench from '../icons/Wrench.svelte';
@@ -82,10 +81,8 @@
 	export let toolServers = [];
 
 	export let selectedToolIds = [];
-	// export let selectedWorkflowIds = []; // 已暂时注释掉
-	let showWorkflowSelector = false;
-	export let selectedWorkflowId: string | null = null;
-	let selectedWorkflowName: string | null = null;
+	export let selectedWorkflowIds = [];
+
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
 	export let deepResearchEnabled = false;
@@ -95,30 +92,17 @@
 		prompt,
 		files,
 		selectedToolIds,
-		// selectedWorkflowIds, // 已暂时注释掉
+		selectedWorkflowIds,
 		imageGenerationEnabled,
 		webSearchEnabled,
 		deepResearchEnabled,
 	});
 
 	let showTools = false;
-	// let showWorkflows = false; // 已暂时注释掉
+	let showWorkflows = false;
 
 	let loaded = false;
 
-	// Deep Research配置函数
-	function getDeepResearchEnabled() {
-		try {
-			const saved = localStorage.getItem('deepResearchConfig');
-			if (saved) {
-				const config = JSON.parse(saved);
-				return config.ENABLE_DEEP_RESEARCH === true;
-			}
-		} catch (error) {
-			console.error('Error loading deep research config:', error);
-		}
-		return true; // 默认开启
-	}
 	let recording = false;
 
 	let isComposing = false;
@@ -1152,12 +1136,36 @@
 											{/if}
 
 											{#if $_user}
-												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || ($_user?.permissions?.features?.web_search ?? true))}
+												<!-- Workflow selector button - positioned before web search -->
+												<WorkflowMenu
+													bind:selectedWorkflowIds
+													bind:deepResearchEnabled
+													onClose={() => {
+														showWorkflows = false;
+													}}
+												>
+													<Tooltip content={$i18n.t('Select Workflows')} placement="top">
+														<button
+															type="button"
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowIds.length > 0 || deepResearchEnabled
+																? 'bg-yellow-100 dark:bg-yellow-500/20 border-yellow-400/20 text-yellow-700 dark:text-yellow-300'
+																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+														>
+															<WorkflowIcon className="size-5" strokeWidth="1.75" />
+															<span
+																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
+																>{$i18n.t('Workflow')}</span
+															>
+														</button>
+													</Tooltip>
+												</WorkflowMenu>
+
+												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || $_user?.permissions?.features?.web_search)}
 													<Tooltip content={$i18n.t('Search the internet')} placement="top">
 														<button
 															on:click|preventDefault={() => (webSearchEnabled = !webSearchEnabled)}
 															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {webSearchEnabled ||
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {webSearchEnabled ||
 															($settings?.webSearch ?? false) === 'always'
 																? 'bg-blue-100 dark:bg-blue-500/20 border-blue-400/20 text-blue-500 dark:text-blue-400'
 																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
@@ -1171,23 +1179,6 @@
 													</Tooltip>
 												{/if}
 
-												{#if getDeepResearchEnabled()}
-													<Tooltip content={$i18n.t('Deep Research')} placement="top">
-														<button
-															on:click|preventDefault={() => (deepResearchEnabled = !deepResearchEnabled)}
-															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {deepResearchEnabled
-																? 'bg-purple-100 dark:bg-purple-500/20 border-purple-400/20 text-purple-500 dark:text-purple-400'
-																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
-														>
-															<DeepResearchIcon className="size-5" strokeWidth="1.75" />
-															<span
-																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
-																>{$i18n.t('Deep Research')}</span
-															>
-														</button>
-													</Tooltip>
-												{/if}
 
 												{#if $config?.features?.enable_image_generation && ($_user.role === 'admin' || $_user?.permissions?.features?.image_generation)}
 													<Tooltip content={$i18n.t('Generate an image')} placement="top">
@@ -1195,7 +1186,7 @@
 															on:click|preventDefault={() =>
 																(imageGenerationEnabled = !imageGenerationEnabled)}
 															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {imageGenerationEnabled
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {imageGenerationEnabled
 																? 'bg-green-100 dark:bg-green-500/20 border-green-400/20 text-green-600 dark:text-green-400'
 																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300  hover:bg-gray-100 dark:hover:bg-gray-800 '}"
 														>
@@ -1214,7 +1205,7 @@
 															on:click|preventDefault={() =>
 																(codeInterpreterEnabled = !codeInterpreterEnabled)}
 															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {codeInterpreterEnabled
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {codeInterpreterEnabled
 																? 'bg-orange-100 dark:bg-orange-500/20 border-orange-400/20 text-orange-600 dark:text-orange-400'
 																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300  hover:bg-gray-100 dark:hover:bg-gray-800 '}"
 														>
@@ -1227,69 +1218,31 @@
 													</Tooltip>
 												{/if}
 
+												<!-- Workflow Button - 已暂时注释掉 -->
+												<!-- 
 												{#if $_user.role === 'admin'}
-													<div class="relative">
-														<WorkflowSelector
-															show={showWorkflowSelector}
-															onWorkflowSelect={(workflowId, workflowName) => {
-																selectedWorkflowId = workflowId;
-																selectedWorkflowName = workflowName;
-																showWorkflowSelector = false;
-																toast.success(`Workflow selected: ${workflowName}`);
-															}}
-														/>
-														<Tooltip content={$i18n.t('Run AI Workflow')} placement="top">
-															<button
-																on:click|preventDefault={() => (showWorkflowSelector = !showWorkflowSelector)}
-																type="button"
-																class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowId
-																	? 'bg-purple-100 dark:bg-purple-500/20 border-purple-400/20 text-purple-500 dark:text-purple-400'
-																	: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+													<WorkflowMenu
+														bind:selectedWorkflowIds
+														onClose={() => {
+															showWorkflows = false;
+														}}
+													>
+														<button
+															on:click|preventDefault={() => (showWorkflows = !showWorkflows)}
+															type="button"
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-full font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowIds.length > 0
+																? 'bg-purple-100 dark:bg-purple-500/20 border-purple-400/20 text-purple-500 dark:text-purple-400'
+																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
+														>
+															<WorkflowIcon className="size-5" strokeWidth="1.75" />
+															<span
+																class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
+																>{$i18n.t('Workflow')}</span
 															>
-																<svg
-																	xmlns="http://www.w3.org/2000/svg"
-																	viewBox="0 0 20 20"
-																	fill="currentColor"
-																	class="size-5"
-																>
-																	<path
-																		d="M10.75 10.818v2.614A3.13 3.13 0 0011.888 13c.482-.315.612-.648.612-.875 0-.227-.13-.56-.612-.875a3.13 3.13 0 00-1.138-.432zM8.33 8.62c.053.055.115.11.184.164.208.16.46.284.736.363V6.603a2.45 2.45 0 00-.35.13c-.14.065-.27.143-.386.233-.377.292-.514.627-.514.909 0 .184.058.39.202.592.037.051.08.102.128.152z"
-																	/>
-																	<path
-																		fill-rule="evenodd"
-																		d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-6a.75.75 0 01.75.75v.316a3.78 3.78 0 011.653.713c.426.33.744.74.925 1.2a.75.75 0 01-1.395.55 1.35 1.35 0 00-.447-.563 2.187 2.187 0 00-.736-.363V9.3c.698.093 1.383.32 1.959.696.787.514 1.29 1.27 1.29 2.13 0 .86-.504 1.616-1.29 2.13-.576.377-1.261.603-1.96.696v.299a.75.75 0 11-1.5 0v-.3c-.697-.092-1.382-.318-1.958-.695-.482-.315-.857-.717-1.078-1.188a.75.75 0 111.359-.636c.08.173.245.376.54.569.313.205.706.353 1.138.432v-2.748a3.782 3.782 0 01-1.653-.713C6.9 9.433 6.5 8.681 6.5 7.875c0-.805.4-1.558 1.097-2.096a3.78 3.78 0 011.653-.713V4.75A.75.75 0 0110 4z"
-																		clip-rule="evenodd"
-																	/>
-																</svg>
-																<span
-																	class="hidden @xl:block whitespace-nowrap overflow-hidden text-ellipsis translate-y-[0.5px]"
-																>
-																	{selectedWorkflowName || $i18n.t('Workflow')}
-																</span>
-																{#if selectedWorkflowId}
-																	<span
-																		role="button"
-																		tabindex="0"
-																		class="ml-1 inline-flex cursor-pointer"
-																		on:click|stopPropagation={() => {
-																			selectedWorkflowId = null;
-																			selectedWorkflowName = null;
-																		}}
-																		on:keydown|stopPropagation={(e) => {
-																			if (e.key === 'Enter' || e.key === ' ') {
-																				e.preventDefault();
-																				selectedWorkflowId = null;
-																				selectedWorkflowName = null;
-																			}
-																		}}
-																	>
-																		<XMark className="size-3" />
-																	</span>
-																{/if}
-															</button>
-														</Tooltip>
-													</div>
+														</button>
+													</WorkflowMenu>
 												{/if}
+												-->
 
 											{/if}
 										</div>

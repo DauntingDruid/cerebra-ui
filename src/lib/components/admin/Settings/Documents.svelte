@@ -280,7 +280,7 @@
 
 					<div class="mb-2.5 flex flex-col w-full justify-between">
 						<div class="flex w-full justify-between">
-							<div class="self-center text-base font-medium">
+							<div class="self-center text-sm font-medium">
 								{$i18n.t('Content Extraction Engine')}
 							</div>
 							<div class="">
@@ -300,7 +300,7 @@
 						{#if RAGConfig.CONTENT_EXTRACTION_ENGINE === ''}
 							<div class="flex w-full mt-1">
 								<div class="flex-1 flex justify-between">
-									<div class=" self-center text-base font-medium">
+									<div class=" self-center text-sm font-medium">
 										{$i18n.t('PDF Extract Images (OCR)')}
 									</div>
 									<div class="flex items-center relative">
@@ -348,12 +348,12 @@
 						{/if}
 					</div>
 
-					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-base font-medium">
-							<Tooltip content={$i18n.t('Full Context Mode')} placement="top-start">
-								{$i18n.t('Bypass Embedding and Retrieval')}
-							</Tooltip>
-						</div>
+						<div class="  mb-2.5 flex w-full justify-between">
+							<div class=" self-center text-sm font-medium">
+								<Tooltip content={$i18n.t('Full Context Mode')} placement="top-start">
+									{$i18n.t('Bypass Embedding and Retrieval')}
+								</Tooltip>
+							</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL
@@ -370,8 +370,8 @@
 					</div>
 
 					{#if !RAGConfig.BYPASS_EMBEDDING_AND_RETRIEVAL}
-						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-base font-medium">{$i18n.t('Text Splitter')}</div>
+							<div class="  mb-2.5 flex w-full justify-between">
+								<div class=" self-center text-sm font-medium">{$i18n.t('Text Splitter')}</div>
 							<div class="flex items-center relative">
 								<select
 									class="dark:bg-gray-900 w-fit pr-8 rounded-sm px-2 text-sm bg-transparent outline-hidden text-right"
@@ -386,9 +386,9 @@
 						<div class="  mb-2.5 flex w-full justify-between">
 							<div class=" flex gap-1.5 w-full">
 								<div class="  w-full justify-between">
-									<div class="self-center text-base font-medium min-w-fit mb-1">
-										{$i18n.t('Chunk Size')}
-									</div>
+										<div class="self-center text-sm font-medium min-w-fit mb-1">
+											{$i18n.t('Chunk Size')}
+										</div>
 									<div class="self-center">
 										<input
 											class=" w-full rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
@@ -402,9 +402,9 @@
 								</div>
 
 								<div class="w-full">
-									<div class=" self-center text-base font-medium min-w-fit mb-1">
-										{$i18n.t('Chunk Overlap')}
-									</div>
+										<div class=" self-center text-sm font-medium min-w-fit mb-1">
+											{$i18n.t('Chunk Overlap')}
+										</div>
 
 									<div class="self-center">
 										<input
@@ -430,7 +430,7 @@
 
 						<div class="  mb-2.5 flex flex-col w-full justify-between">
 							<div class="flex w-full justify-between">
-								<div class=" self-center text-base font-medium">
+								<div class=" self-center text-sm font-medium">
 									{$i18n.t('Embedding Model Engine')}
 								</div>
 								<div class="flex items-center relative">
@@ -485,7 +485,7 @@
 						</div>
 
 						<div class="  mb-2.5 flex flex-col w-full">
-							<div class=" mb-1 text-base font-medium">{$i18n.t('Embedding Model')}</div>
+							<div class=" mb-1 text-sm font-medium">{$i18n.t('Embedding Model')}</div>
 
 							<div class="">
 								{#if embeddingEngine === 'ollama'}
@@ -579,7 +579,7 @@
 
 						{#if embeddingEngine === 'ollama' || embeddingEngine === 'openai'}
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-base font-medium">
+								<div class=" self-center text-sm font-medium">
 									{$i18n.t('Embedding Batch Size')}
 								</div>
 
@@ -603,7 +603,7 @@
 						<hr class=" border-gray-100 dark:border-gray-850 my-2" />
 
 						<div class="  mb-2.5 flex w-full justify-between">
-							<div class=" self-center text-base font-medium">{$i18n.t('Full Context Mode')}</div>
+							<div class=" self-center text-sm font-medium">{$i18n.t('Full Context Mode')}</div>
 							<div class="flex items-center relative">
 								<Tooltip
 									content={RAGConfig.RAG_FULL_CONTEXT
@@ -621,7 +621,7 @@
 
 						{#if !RAGConfig.RAG_FULL_CONTEXT}
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-base font-medium">{$i18n.t('Hybrid Search')}</div>
+								<div class=" self-center text-sm font-medium">{$i18n.t('Hybrid Search')}</div>
 								<div class="flex items-center relative">
 									<Switch
 										bind:state={RAGConfig.ENABLE_RAG_HYBRID_SEARCH}
@@ -634,7 +634,7 @@
 
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="  mb-2.5 flex flex-col w-full">
-									<div class=" mb-1 text-base font-medium">{$i18n.t('Reranking Model')}</div>
+									<div class=" mb-1 text-sm font-medium">{$i18n.t('Reranking Model')}</div>
 
 									<div class="">
 										<div class="flex w-full">
@@ -706,10 +706,10 @@
 							{/if}
 
 							<div class="  mb-2.5 flex w-full justify-between">
-								<div class=" self-center text-base font-medium">{$i18n.t('Top K')}</div>
+								<div class=" self-center text-sm font-medium">{$i18n.t('Top K')}</div>
 								<div class="flex items-center relative">
 									<input
-										class="flex-1 w-full rounded-lg text-sm bg-transparent outline-hidden"
+										class="w-20 rounded-lg py-1.5 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 										type="number"
 										placeholder={$i18n.t('Enter Top K')}
 										bind:value={RAGConfig.TOP_K}
@@ -721,7 +721,7 @@
 
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="mb-2.5 flex w-full justify-between">
-									<div class="self-center text-base font-medium">{$i18n.t('Top K Reranker')}</div>
+									<div class="self-center text-sm font-medium">{$i18n.t('Top K Reranker')}</div>
 									<div class="flex items-center relative">
 										<input
 											class="flex-1 w-full rounded-lg text-sm bg-transparent outline-hidden"
@@ -738,9 +738,9 @@
 							{#if RAGConfig.ENABLE_RAG_HYBRID_SEARCH === true}
 								<div class="  mb-2.5 flex flex-col w-full justify-between">
 									<div class=" flex w-full justify-between">
-										<div class=" self-center text-base font-medium">
-											{$i18n.t('Relevance Threshold')}
-										</div>
+									<div class=" self-center text-sm font-medium">
+										{$i18n.t('Relevance Threshold')}
+									</div>
 										<div class="flex items-center relative">
 											<input
 												class="flex-1 w-full rounded-lg text-sm bg-transparent outline-hidden"
@@ -766,7 +766,7 @@
 						{/if}
 
 						<div class="  mb-2.5 flex flex-col w-full justify-between">
-							<div class=" mb-1 text-base font-medium">{$i18n.t('RAG Template')}</div>
+							<div class=" mb-1 text-sm font-medium">{$i18n.t('RAG Template')}</div>
 							<div class="flex w-full items-center relative">
 								<Tooltip
 									content={$i18n.t(
@@ -793,7 +793,7 @@
 					<hr class=" border-gray-100 dark:border-gray-850 my-2" />
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-base font-medium">{$i18n.t('Max Upload Size')}</div>
+						<div class=" self-center text-sm font-medium">{$i18n.t('Max Upload Size')}</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
@@ -814,7 +814,7 @@
 					</div>
 
 					<div class="  mb-2.5 flex w-full justify-between">
-						<div class=" self-center text-base font-medium">{$i18n.t('Max Upload Count')}</div>
+						<div class=" self-center text-sm font-medium">{$i18n.t('Max Upload Count')}</div>
 						<div class="flex items-center relative">
 							<Tooltip
 								content={$i18n.t(
