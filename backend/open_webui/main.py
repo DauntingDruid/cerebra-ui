@@ -78,6 +78,7 @@ from open_webui.routers import (
     utils,
     secure,
     betterauth_adapter,
+    workflows,
 )
 
 from open_webui.routers.retrieval import (
@@ -433,6 +434,13 @@ async def lifespan(app: FastAPI):
 
     if LICENSE_KEY:
         get_license_data(app, LICENSE_KEY)
+
+    # ADD THESE LINES HERE:
+    from open_webui.models.workflows import Base
+    from open_webui.internal.db import engine
+    Base.metadata.create_all(bind=engine)
+    log.info("✅ Workflow tables created/verified")
+    # END OF ADDITION
 
     asyncio.create_task(periodic_usage_pool_cleanup())
     yield
@@ -974,6 +982,7 @@ app.include_router(
 )
 app.include_router(utils.router, prefix="/api/v1/utils", tags=["utils"])
 app.include_router(secure.router)  
+app.include_router(workflows.router, prefix="/api/v1/workflows", tags=["workflows"])
 
 
 

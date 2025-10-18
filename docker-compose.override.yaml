@@ -14,7 +14,8 @@ services:
       - CORS_ALLOW_ORIGIN=http://localhost:3000
       - WEBUI_SESSION_COOKIE_SAME_SITE=lax
       - WEBUI_SESSION_COOKIE_SECURE=false
-      - WEBUI_AUTH=true 
+      - WEBUI_AUTH=true
+      - ENCRYPTION_KEY=sWMJ67yu2VQKjtC2NlMNRXA9hy9TOneLC1Ejn3ZqmjY= 
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro
@@ -22,7 +23,19 @@ services:
     networks:
       - default
       - cerebra_net
-
+  langflow:
+    image: langflowai/langflow:latest
+    ports:
+      - "7860:7860"     # exposes UI at http://localhost:7860
+    environment:
+      - LANGFLOW_DATABASE_URL=sqlite:///langflow.db
+    volumes:
+      - langflow-data:/app/langflow
+    networks:
+      - default
+      - cerebra_net
 networks:
   cerebra_net:
     external: true
+volumes:
+  langflow-data:
