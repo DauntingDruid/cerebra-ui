@@ -1,0 +1,1399 @@
+🔬 Open WebUI ComfyUI 完整代码审查
+====================================
+
+📂 1. 所有ComfyUI相关文件
+-------------------------
+./backend/open_webui/routers/images.py
+./backend/open_webui/config.py
+./backend/open_webui/utils/images/comfyui.py
+./.svelte-kit/output/client/_app/immutable/nodes/13.BjZ9fvfj.js
+./build/_app/immutable/nodes/13.BjZ9fvfj.js
+./src/lib/components/admin/Settings/Images.svelte
+
+========================================
+
+📄 2. utils/images/comfyui.py 完整内容
+---------------------------------------
+import asyncio
+import json
+import logging
+import random
+import urllib.parse
+import urllib.request
+from typing import Optional
+
+import websocket  # NOTE: websocket-client (https://github.com/websocket-client/websocket-client)
+from open_webui.env import SRC_LOG_LEVELS
+from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
+log.setLevel(SRC_LOG_LEVELS["COMFYUI"])
+
+default_headers = {"User-Agent": "Mozilla/5.0"}
+
+
+def queue_prompt(prompt, client_id, base_url, api_key):
+    log.info("queue_prompt")
+    p = {"prompt": prompt, "client_id": client_id}
+    data = json.dumps(p).encode("utf-8")
+    log.debug(f"queue_prompt data: {data}")
+    try:
+        req = urllib.request.Request(
+            f"{base_url}/prompt",
+            data=data,
+            headers={**default_headers, "Authorization": f"Bearer {api_key}"},
+        )
+        response = urllib.request.urlopen(req).read()
+        return json.loads(response)
+    except Exception as e:
+        log.exception(f"Error while queuing prompt: {e}")
+        raise e
+
+
+def get_image(filename, subfolder, folder_type, base_url, api_key):
+    log.info("get_image")
+    data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
+    url_values = urllib.parse.urlencode(data)
+    req = urllib.request.Request(
+        f"{base_url}/view?{url_values}",
+        headers={**default_headers, "Authorization": f"Bearer {api_key}"},
+    )
+    with urllib.request.urlopen(req) as response:
+        return response.read()
+
+
+def get_image_url(filename, subfolder, folder_type, base_url):
+    log.info("get_image")
+    data = {"filename": filename, "subfolder": subfolder, "type": folder_type}
+    url_values = urllib.parse.urlencode(data)
+    return f"{base_url}/view?{url_values}"
+
+
+def get_history(prompt_id, base_url, api_key):
+    log.info("get_history")
+
+    req = urllib.request.Request(
+        f"{base_url}/history/{prompt_id}",
+        headers={**default_headers, "Authorization": f"Bearer {api_key}"},
+    )
+    with urllib.request.urlopen(req) as response:
+        return json.loads(response.read())
+
+
+def get_images(ws, prompt, client_id, base_url, api_key):
+    prompt_id = queue_prompt(prompt, client_id, base_url, api_key)["prompt_id"]
+    output_images = []
+    while True:
+        out = ws.recv()
+        if isinstance(out, str):
+            message = json.loads(out)
+            if message["type"] == "executing":
+                data = message["data"]
+                if data["node"] is None and data["prompt_id"] == prompt_id:
+                    break  # Execution is done
+        else:
+            continue  # previews are binary data
+
+    history = get_history(prompt_id, base_url, api_key)[prompt_id]
+    for o in history["outputs"]:
+        for node_id in history["outputs"]:
+            node_output = history["outputs"][node_id]
+            if "images" in node_output:
+                for image in node_output["images"]:
+                    url = get_image_url(
+                        image["filename"], image["subfolder"], image["type"], base_url
+                    )
+                    output_images.append({"url": url})
+    return {"data": output_images}
+
+
+class ComfyUINodeInput(BaseModel):
+    type: Optional[str] = None
+    node_ids: list[str] = []
+    key: Optional[str] = "text"
+    value: Optional[str] = None
+
+
+class ComfyUIWorkflow(BaseModel):
+    workflow: str
+    nodes: list[ComfyUINodeInput]
+
+
+class ComfyUIGenerateImageForm(BaseModel):
+    workflow: ComfyUIWorkflow
+
+    prompt: str
+    negative_prompt: Optional[str] = None
+    width: int
+    height: int
+    n: int = 1
+
+    steps: Optional[int] = None
+    seed: Optional[int] = None
+
+
+async def comfyui_generate_image(
+    model: str, payload: ComfyUIGenerateImageForm, client_id, base_url, api_key
+):
+    ws_url = base_url.replace("http://", "ws://").replace("https://", "wss://")
+    workflow = json.loads(payload.workflow.workflow)
+
+    for node in payload.workflow.nodes:
+        if node.type:
+            if node.type == "model":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][node.key] = model
+            elif node.type == "prompt":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "text"
+                    ] = payload.prompt
+            elif node.type == "negative_prompt":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "text"
+                    ] = payload.negative_prompt
+            elif node.type == "width":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "width"
+                    ] = payload.width
+            elif node.type == "height":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "height"
+                    ] = payload.height
+            elif node.type == "n":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "batch_size"
+                    ] = payload.n
+            elif node.type == "steps":
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][
+                        node.key if node.key else "steps"
+                    ] = payload.steps
+            elif node.type == "seed":
+                seed = (
+                    payload.seed
+                    if payload.seed
+                    else random.randint(0, 1125899906842624)
+                )
+                for node_id in node.node_ids:
+                    workflow[node_id]["inputs"][node.key] = seed
+        else:
+            for node_id in node.node_ids:
+                workflow[node_id]["inputs"][node.key] = node.value
+
+    try:
+        ws = websocket.WebSocket()
+        headers = {"Authorization": f"Bearer {api_key}"}
+        ws.connect(f"{ws_url}/ws?clientId={client_id}", header=headers)
+        log.info("WebSocket connection established.")
+    except Exception as e:
+        log.exception(f"Failed to connect to WebSocket server: {e}")
+        return None
+
+    try:
+        log.info("Sending workflow to WebSocket server.")
+        log.info(f"Workflow: {workflow}")
+        images = await asyncio.to_thread(
+            get_images, ws, workflow, client_id, base_url, api_key
+        )
+    except Exception as e:
+        log.exception(f"Error while receiving images: {e}")
+        images = None
+
+    ws.close()
+
+    return images
+========================================
+
+📄 3. routers/images.py 中的 ComfyUI 代码
+------------------------------------------
+15-from open_webui.env import ENABLE_FORWARD_USER_INFO_HEADERS, SRC_LOG_LEVELS
+16-from open_webui.routers.files import upload_file
+17-from open_webui.utils.auth import get_admin_user, get_verified_user
+18:from open_webui.utils.images.comfyui import (
+19:    ComfyUIGenerateImageForm,
+20:    ComfyUIWorkflow,
+21:    comfyui_generate_image,
+22-)
+23-from pydantic import BaseModel
+24-
+--
+49-            "AUTOMATIC1111_SAMPLER": request.app.state.config.AUTOMATIC1111_SAMPLER,
+50-            "AUTOMATIC1111_SCHEDULER": request.app.state.config.AUTOMATIC1111_SCHEDULER,
+51-        },
+52:        "comfyui": {
+53:            "COMFYUI_BASE_URL": request.app.state.config.COMFYUI_BASE_URL,
+54:            "COMFYUI_API_KEY": request.app.state.config.COMFYUI_API_KEY,
+55:            "COMFYUI_WORKFLOW": request.app.state.config.COMFYUI_WORKFLOW,
+56:            "COMFYUI_WORKFLOW_NODES": request.app.state.config.COMFYUI_WORKFLOW_NODES,
+57-        },
+58-        "gemini": {
+59-            "GEMINI_API_BASE_URL": request.app.state.config.IMAGES_GEMINI_API_BASE_URL,
+--
+75-    AUTOMATIC1111_SCHEDULER: Optional[str]
+76-
+77-
+78:class ComfyUIConfigForm(BaseModel):
+79:    COMFYUI_BASE_URL: str
+80:    COMFYUI_API_KEY: str
+81:    COMFYUI_WORKFLOW: str
+82:    COMFYUI_WORKFLOW_NODES: list[dict]
+83-
+84-
+85-class GeminiConfigForm(BaseModel):
+--
+93-    prompt_generation: bool
+94-    openai: OpenAIConfigForm
+95-    automatic1111: Automatic1111ConfigForm
+96:    comfyui: ComfyUIConfigForm
+97-    gemini: GeminiConfigForm
+98-
+99-
+--
+141-        else None
+142-    )
+143-
+144:    request.app.state.config.COMFYUI_BASE_URL = (
+145:        form_data.comfyui.COMFYUI_BASE_URL.strip("/")
+146-    )
+147:    request.app.state.config.COMFYUI_API_KEY = form_data.comfyui.COMFYUI_API_KEY
+148-
+149:    request.app.state.config.COMFYUI_WORKFLOW = form_data.comfyui.COMFYUI_WORKFLOW
+150:    request.app.state.config.COMFYUI_WORKFLOW_NODES = (
+151:        form_data.comfyui.COMFYUI_WORKFLOW_NODES
+152-    )
+153-
+154-    return {
+--
+166-            "AUTOMATIC1111_SAMPLER": request.app.state.config.AUTOMATIC1111_SAMPLER,
+167-            "AUTOMATIC1111_SCHEDULER": request.app.state.config.AUTOMATIC1111_SCHEDULER,
+168-        },
+169:        "comfyui": {
+170:            "COMFYUI_BASE_URL": request.app.state.config.COMFYUI_BASE_URL,
+171:            "COMFYUI_API_KEY": request.app.state.config.COMFYUI_API_KEY,
+172:            "COMFYUI_WORKFLOW": request.app.state.config.COMFYUI_WORKFLOW,
+173:            "COMFYUI_WORKFLOW_NODES": request.app.state.config.COMFYUI_WORKFLOW_NODES,
+174-        },
+175-        "gemini": {
+176-            "GEMINI_API_BASE_URL": request.app.state.config.IMAGES_GEMINI_API_BASE_URL,
+--
+204-        except Exception:
+205-            request.app.state.config.ENABLE_IMAGE_GENERATION = False
+206-            raise HTTPException(status_code=400, detail=ERROR_MESSAGES.INVALID_URL)
+207:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+208-
+209-        headers = None
+210:        if request.app.state.config.COMFYUI_API_KEY:
+211-            headers = {
+212:                "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+213-            }
+214-
+215-        try:
+216-            r = requests.get(
+217:                url=f"{request.app.state.config.COMFYUI_BASE_URL}/object_info",
+218-                headers=headers,
+219-            )
+220-            r.raise_for_status()
+--
+259-            if request.app.state.config.IMAGE_GENERATION_MODEL
+260-            else "imagen-3.0-generate-002"
+261-        )
+262:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+263-        return (
+264-            request.app.state.config.IMAGE_GENERATION_MODEL
+265-            if request.app.state.config.IMAGE_GENERATION_MODEL
+--
+338-            return [
+339-                {"id": "imagen-3-0-generate-002", "name": "imagen-3.0 generate-002"},
+340-            ]
+341:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+342:            # TODO - get models from comfyui
+343-            headers = {
+344:                "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+345-            }
+346-            r = requests.get(
+347:                url=f"{request.app.state.config.COMFYUI_BASE_URL}/object_info",
+348-                headers=headers,
+349-            )
+350-            info = r.json()
+351-
+352:            workflow = json.loads(request.app.state.config.COMFYUI_WORKFLOW)
+353-            model_node_id = None
+354-
+355:            for node in request.app.state.config.COMFYUI_WORKFLOW_NODES:
+356-                if node["type"] == "model":
+357-                    if node["node_ids"]:
+358-                        model_node_id = node["node_ids"][0]
+--
+561-
+562-            return images
+563-
+564:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+565-            data = {
+566-                "prompt": form_data.prompt,
+567-                "width": width,
+--
+575-            if form_data.negative_prompt is not None:
+576-                data["negative_prompt"] = form_data.negative_prompt
+577-
+578:            form_data = ComfyUIGenerateImageForm(
+579-                **{
+580:                    "workflow": ComfyUIWorkflow(
+581-                        **{
+582:                            "workflow": request.app.state.config.COMFYUI_WORKFLOW,
+583:                            "nodes": request.app.state.config.COMFYUI_WORKFLOW_NODES,
+584-                        }
+585-                    ),
+586-                    **data,
+587-                }
+588-            )
+589:            res = await comfyui_generate_image(
+590-                request.app.state.config.IMAGE_GENERATION_MODEL,
+591-                form_data,
+592-                user.id,
+593:                request.app.state.config.COMFYUI_BASE_URL,
+594:                request.app.state.config.COMFYUI_API_KEY,
+595-            )
+596-            log.debug(f"res: {res}")
+597-
+--
+599-
+600-            for image in res["data"]:
+601-                headers = None
+602:                if request.app.state.config.COMFYUI_API_KEY:
+603-                    headers = {
+604:                        "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+605-                    }
+606-
+607-                image_data, content_type = load_url_image_data(image["url"], headers)
+
+========================================
+
+📄 4. 完整的 /generations 端点实现
+-----------------------------------
+@router.post("/generations")
+async def image_generations(
+    request: Request,
+    form_data: GenerateImageForm,
+    user=Depends(get_verified_user),
+):
+    width, height = tuple(map(int, request.app.state.config.IMAGE_SIZE.split("x")))
+
+    r = None
+    try:
+        if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+            headers = {}
+            headers["Authorization"] = (
+                f"Bearer {request.app.state.config.IMAGES_OPENAI_API_KEY}"
+            )
+            headers["Content-Type"] = "application/json"
+
+            if ENABLE_FORWARD_USER_INFO_HEADERS:
+                headers["X-OpenWebUI-User-Name"] = user.name
+                headers["X-OpenWebUI-User-Id"] = user.id
+                headers["X-OpenWebUI-User-Email"] = user.email
+                headers["X-OpenWebUI-User-Role"] = user.role
+
+            data = {
+                "model": (
+                    request.app.state.config.IMAGE_GENERATION_MODEL
+                    if request.app.state.config.IMAGE_GENERATION_MODEL != ""
+                    else "dall-e-2"
+                ),
+                "prompt": form_data.prompt,
+                "n": form_data.n,
+                "size": (
+                    form_data.size
+                    if form_data.size
+                    else request.app.state.config.IMAGE_SIZE
+                ),
+                "response_format": "b64_json",
+            }
+
+            # Use asyncio.to_thread for the requests.post call
+            r = await asyncio.to_thread(
+                requests.post,
+                url=f"{request.app.state.config.IMAGES_OPENAI_API_BASE_URL}/images/generations",
+                json=data,
+                headers=headers,
+            )
+
+            r.raise_for_status()
+            res = r.json()
+
+            images = []
+
+            for image in res["data"]:
+                if image_url := image.get("url", None):
+                    image_data, content_type = load_url_image_data(image_url, headers)
+                else:
+                    image_data, content_type = load_b64_image_data(image["b64_json"])
+
+                url = upload_image(request, data, image_data, content_type, user)
+                images.append({"url": url})
+            return images
+
+        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+            headers = {}
+            headers["Content-Type"] = "application/json"
+            headers["x-goog-api-key"] = request.app.state.config.IMAGES_GEMINI_API_KEY
+
+            model = get_image_model(request)
+            data = {
+                "instances": {"prompt": form_data.prompt},
+                "parameters": {
+                    "sampleCount": form_data.n,
+                    "outputOptions": {"mimeType": "image/png"},
+                },
+            }
+
+            # Use asyncio.to_thread for the requests.post call
+            r = await asyncio.to_thread(
+                requests.post,
+                url=f"{request.app.state.config.IMAGES_GEMINI_API_BASE_URL}/models/{model}:predict",
+                json=data,
+                headers=headers,
+            )
+
+            r.raise_for_status()
+            res = r.json()
+
+            images = []
+            for image in res["predictions"]:
+                image_data, content_type = load_b64_image_data(
+                    image["bytesBase64Encoded"]
+                )
+                url = upload_image(request, data, image_data, content_type, user)
+                images.append({"url": url})
+
+            return images
+
+        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+            data = {
+                "prompt": form_data.prompt,
+                "width": width,
+                "height": height,
+                "n": form_data.n,
+            }
+
+            if request.app.state.config.IMAGE_STEPS is not None:
+                data["steps"] = request.app.state.config.IMAGE_STEPS
+
+            if form_data.negative_prompt is not None:
+                data["negative_prompt"] = form_data.negative_prompt
+
+            form_data = ComfyUIGenerateImageForm(
+                **{
+                    "workflow": ComfyUIWorkflow(
+                        **{
+                            "workflow": request.app.state.config.COMFYUI_WORKFLOW,
+                            "nodes": request.app.state.config.COMFYUI_WORKFLOW_NODES,
+                        }
+                    ),
+                    **data,
+                }
+            )
+            res = await comfyui_generate_image(
+                request.app.state.config.IMAGE_GENERATION_MODEL,
+                form_data,
+                user.id,
+                request.app.state.config.COMFYUI_BASE_URL,
+                request.app.state.config.COMFYUI_API_KEY,
+            )
+            log.debug(f"res: {res}")
+
+            images = []
+
+            for image in res["data"]:
+                headers = None
+                if request.app.state.config.COMFYUI_API_KEY:
+                    headers = {
+                        "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+                    }
+
+                image_data, content_type = load_url_image_data(image["url"], headers)
+                url = upload_image(
+                    request,
+                    form_data.model_dump(exclude_none=True),
+                    image_data,
+                    content_type,
+                    user,
+                )
+                images.append({"url": url})
+            return images
+        elif (
+            request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+            or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+        ):
+            if form_data.model:
+                set_image_model(form_data.model)
+
+            data = {
+                "prompt": form_data.prompt,
+                "batch_size": form_data.n,
+                "width": width,
+                "height": height,
+            }
+
+            if request.app.state.config.IMAGE_STEPS is not None:
+                data["steps"] = request.app.state.config.IMAGE_STEPS
+
+            if form_data.negative_prompt is not None:
+                data["negative_prompt"] = form_data.negative_prompt
+
+            if request.app.state.config.AUTOMATIC1111_CFG_SCALE:
+                data["cfg_scale"] = request.app.state.config.AUTOMATIC1111_CFG_SCALE
+
+            if request.app.state.config.AUTOMATIC1111_SAMPLER:
+                data["sampler_name"] = request.app.state.config.AUTOMATIC1111_SAMPLER
+
+            if request.app.state.config.AUTOMATIC1111_SCHEDULER:
+                data["scheduler"] = request.app.state.config.AUTOMATIC1111_SCHEDULER
+
+            # Use asyncio.to_thread for the requests.post call
+            r = await asyncio.to_thread(
+                requests.post,
+                url=f"{request.app.state.config.AUTOMATIC1111_BASE_URL}/sdapi/v1/txt2img",
+                json=data,
+                headers={"authorization": get_automatic1111_api_auth(request)},
+            )
+
+            res = r.json()
+            log.debug(f"res: {res}")
+
+            images = []
+
+            for image in res["images"]:
+                image_data, content_type = load_b64_image_data(image)
+                url = upload_image(
+                    request,
+                    {**data, "info": res["info"]},
+                    image_data,
+                    content_type,
+                    user,
+                )
+                images.append({"url": url})
+            return images
+    except Exception as e:
+        error = e
+        if r != None:
+            data = r.json()
+            if "error" in data:
+                error = data["error"]["message"]
+        raise HTTPException(status_code=400, detail=ERROR_MESSAGES.DEFAULT(error))
+
+========================================
+
+📄 5. 前端 API 调用实现
+-----------------------
+找到 src/lib/apis/images/index.ts:
+import { IMAGES_API_BASE_URL } from '$lib/constants';
+
+export const getConfig = async (token: string = '') => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/config`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const updateConfig = async (token: string = '', config: object) => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/config/update`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		},
+		body: JSON.stringify({
+			...config
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const verifyConfigUrl = async (token: string = '') => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/config/url/verify`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const getImageGenerationConfig = async (token: string = '') => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/image/config`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const updateImageGenerationConfig = async (token: string = '', config: object) => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/image/config/update`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		},
+		body: JSON.stringify({ ...config })
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const getImageGenerationModels = async (token: string = '') => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/models`, {
+		method: 'GET',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		}
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const imageGenerations = async (token: string = '', prompt: string) => {
+	let error = null;
+
+	const res = await fetch(`${IMAGES_API_BASE_URL}/generations`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			...(token && { authorization: `Bearer ${token}` })
+		},
+		body: JSON.stringify({
+			prompt: prompt
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.log(err);
+			if ('detail' in err) {
+				error = err.detail;
+			} else {
+				error = 'Server connection failed';
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+========================================
+
+📄 6. 前端配置组件关键代码
+---------------------------
+Images.svelte 中的数据提交逻辑：
+6-
+7-	import { getBackendConfig } from '$lib/apis';
+8-	import {
+9-		getImageGenerationModels,
+10-		getImageGenerationConfig,
+11:		updateImageGenerationConfig,
+12-		getConfig,
+13-		updateConfig,
+14-		verifyConfigUrl
+15-	} from '$lib/apis/images';
+16-	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
+17-	import Switch from '$lib/components/common/Switch.svelte';
+18-	import Tooltip from '$lib/components/common/Tooltip.svelte';
+19-	const dispatch = createEventDispatcher();
+20-
+21-	const i18n = getContext('i18n');
+--
+162-			toast.error(`${error}`);
+163-			loading = false;
+164-			return null;
+165-		});
+166-
+167:		await updateImageGenerationConfig(localStorage.token, imageGenerationConfig).catch((error) => {
+168-			toast.error(`${error}`);
+169-			loading = false;
+170-			return null;
+171-		});
+172-
+173-		getModels();
+174-		dispatch('save');
+175-		loading = false;
+176-	};
+177-
+
+========================================
+
+📄 7. 默认 Workflow 完整定义
+-----------------------------
+COMFYUI_DEFAULT_WORKFLOW = """
+{
+  "3": {
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 8,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "4": {
+    "inputs": {
+      "ckpt_name": "model.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint"
+    }
+  },
+  "5": {
+    "inputs": {
+      "width": 512,
+      "height": 512,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "Prompt",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
+"""
+    os.getenv("COMFYUI_WORKFLOW", COMFYUI_DEFAULT_WORKFLOW),
+)
+
+COMFYUI_WORKFLOW_NODES = PersistentConfig(
+    "COMFYUI_WORKFLOW",
+    "image_generation.comfyui.nodes",
+    [],
+)
+
+IMAGES_OPENAI_API_BASE_URL = PersistentConfig(
+    "IMAGES_OPENAI_API_BASE_URL",
+    "image_generation.openai.api_base_url",
+    os.getenv("IMAGES_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+)
+IMAGES_OPENAI_API_KEY = PersistentConfig(
+    "IMAGES_OPENAI_API_KEY",
+    "image_generation.openai.api_key",
+    os.getenv("IMAGES_OPENAI_API_KEY", OPENAI_API_KEY),
+)
+
+IMAGES_GEMINI_API_BASE_URL = PersistentConfig(
+    "IMAGES_GEMINI_API_BASE_URL",
+    "image_generation.gemini.api_base_url",
+    os.getenv("IMAGES_GEMINI_API_BASE_URL", GEMINI_API_BASE_URL),
+)
+IMAGES_GEMINI_API_KEY = PersistentConfig(
+    "IMAGES_GEMINI_API_KEY",
+    "image_generation.gemini.api_key",
+    os.getenv("IMAGES_GEMINI_API_KEY", GEMINI_API_KEY),
+)
+
+IMAGE_SIZE = PersistentConfig(
+    "IMAGE_SIZE", "image_generation.size", os.getenv("IMAGE_SIZE", "512x512")
+)
+
+IMAGE_STEPS = PersistentConfig(
+    "IMAGE_STEPS", "image_generation.steps", int(os.getenv("IMAGE_STEPS", 50))
+)
+
+IMAGE_GENERATION_MODEL = PersistentConfig(
+    "IMAGE_GENERATION_MODEL",
+    "image_generation.model",
+    os.getenv("IMAGE_GENERATION_MODEL", ""),
+)
+
+####################################
+# Audio
+####################################
+
+# Transcription
+WHISPER_MODEL = PersistentConfig(
+    "WHISPER_MODEL",
+    "audio.stt.whisper_model",
+    os.getenv("WHISPER_MODEL", "base"),
+)
+
+WHISPER_MODEL_DIR = os.getenv("WHISPER_MODEL_DIR", f"{CACHE_DIR}/whisper/models")
+WHISPER_MODEL_AUTO_UPDATE = (
+    not OFFLINE_MODE
+    and os.environ.get("WHISPER_MODEL_AUTO_UPDATE", "").lower() == "true"
+)
+
+WHISPER_VAD_FILTER = PersistentConfig(
+    "WHISPER_VAD_FILTER",
+    "audio.stt.whisper_vad_filter",
+    os.getenv("WHISPER_VAD_FILTER", "False").lower() == "true",
+)
+
+
+# Add Deepgram configuration
+DEEPGRAM_API_KEY = PersistentConfig(
+    "DEEPGRAM_API_KEY",
+    "audio.stt.deepgram.api_key",
+    os.getenv("DEEPGRAM_API_KEY", ""),
+)
+
+
+AUDIO_STT_OPENAI_API_BASE_URL = PersistentConfig(
+    "AUDIO_STT_OPENAI_API_BASE_URL",
+    "audio.stt.openai.api_base_url",
+    os.getenv("AUDIO_STT_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+)
+
+AUDIO_STT_OPENAI_API_KEY = PersistentConfig(
+    "AUDIO_STT_OPENAI_API_KEY",
+    "audio.stt.openai.api_key",
+    os.getenv("AUDIO_STT_OPENAI_API_KEY", OPENAI_API_KEY),
+)
+
+AUDIO_STT_ENGINE = PersistentConfig(
+    "AUDIO_STT_ENGINE",
+
+========================================
+
+📄 8. Workflow Nodes 默认配置
+------------------------------
+2456-    "COMFYUI_WORKFLOW",
+2457-    "image_generation.comfyui.workflow",
+2458-    os.getenv("COMFYUI_WORKFLOW", COMFYUI_DEFAULT_WORKFLOW),
+2459-)
+2460-
+2461:COMFYUI_WORKFLOW_NODES = PersistentConfig(
+2462-    "COMFYUI_WORKFLOW",
+2463-    "image_generation.comfyui.nodes",
+2464-    [],
+2465-)
+2466-
+2467-IMAGES_OPENAI_API_BASE_URL = PersistentConfig(
+2468-    "IMAGES_OPENAI_API_BASE_URL",
+2469-    "image_generation.openai.api_base_url",
+2470-    os.getenv("IMAGES_OPENAI_API_BASE_URL", OPENAI_API_BASE_URL),
+2471-)
+
+========================================
+
+🔍 9. 搜索 Fal API 相关代码
+---------------------------
+在Python文件中搜索'fal'：
+backend/open_webui/routers/retrieval.py:1308:        log.warning("[search] Unsupported engine %r, fallback -> %r", eng, DEFAULT_ENGINE)
+backend/open_webui/routers/retrieval.py:1450:async def _fetch_one_with_crawl4ai_fallback(
+backend/open_webui/routers/retrieval.py:1564:        log.warning("Unsupported engine %r; fallback to %r", engine, DEFAULT_ENGINE)
+backend/open_webui/routers/retrieval.py:1669:        log.warning("[search_links] Unsupported engine %r, fallback -> %r", engine, DEFAULT_ENGINE)
+backend/open_webui/routers/retrieval.py:1748:                    return await _fetch_one_with_crawl4ai_fallback(
+backend/open_webui/routers/retrieval.py:1801:                log.warning("embed-filter failed, fallback no-filter: %s", _e)
+backend/open_webui/routers/audio.py:570:                mime = "audio/wav"  # fallback to wav if undetectable
+backend/open_webui/routers/betterauth_adapter.py:74:# def _string_error(data, fallback="Request failed"):
+backend/open_webui/routers/betterauth_adapter.py:85:#         return fallback
+backend/open_webui/routers/betterauth_adapter.py:106:#                     detail=_string_error(data, fallback=f"HTTP {resp.status}"),
+backend/open_webui/routers/betterauth_adapter.py:123:#                 # try to parse JSON; fall back to text
+backend/open_webui/routers/betterauth_adapter.py:133:# def _normalize_user(u: dict, email_fallback: str = "") -> dict:
+backend/open_webui/routers/betterauth_adapter.py:134:#     email = (u or {}).get("email") or email_fallback
+backend/open_webui/routers/betterauth_adapter.py:168:# #     user = _normalize_user(ba.get("user"), email_fallback=email)
+backend/open_webui/routers/betterauth_adapter.py:265:#     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
+backend/open_webui/routers/betterauth_adapter.py:297:# #     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
+backend/open_webui/routers/betterauth_adapter.py:422:def _string_error(data, fallback="Request failed"):
+backend/open_webui/routers/betterauth_adapter.py:433:        return fallback
+backend/open_webui/routers/betterauth_adapter.py:454:                    detail=_string_error(data, fallback=f"HTTP {resp.status}"),
+backend/open_webui/config.py:826:USE_OLLAMA_DOCKER = os.environ.get("USE_OLLAMA_DOCKER", "false")
+
+在前端文件中搜索'fal'：
+src/lib/apis/streaming/index.ts:71:				yield { done: false, value: '', sources: parsedData.sources };
+src/lib/apis/streaming/index.ts:76:				yield { done: false, value: '', selectedModelId: parsedData.selected_model_id };
+src/lib/apis/streaming/index.ts:81:				yield { done: false, value: '', usage: parsedData.usage };
+src/lib/apis/streaming/index.ts:86:				done: false,
+src/lib/apis/streaming/index.ts:125:			yield { done: false, value: content };
+src/lib/apis/streaming/index.ts:131:			yield { done: false, value: chunk };
+src/lib/apis/index.ts:11:	base: boolean = false
+src/lib/apis/index.ts:791:			stream: false
+src/lib/apis/ollama/index.ts:207:	return res?.version ?? false;
+src/lib/apis/openai/index.ts:272:	direct: boolean = false
+src/lib/stores/index.ts:75:export const isApp = writable(false);
+src/lib/stores/index.ts:90:export const mobile = writable(false);
+src/lib/stores/index.ts:198:export const showSidebar = writable(false);
+src/lib/stores/index.ts:199:export const showSettings = writable(false);
+src/lib/stores/index.ts:200:export const showArchivedChats = writable(false);
+src/lib/stores/index.ts:201:export const showChangelog = writable(false);
+src/lib/stores/index.ts:210:export const showControls = writable(false);
+src/lib/stores/index.ts:211:export const showOverview = writable(false);
+src/lib/stores/index.ts:212:export const showArtifacts = writable(false);
+src/lib/stores/index.ts:213:export const showCallOverlay = writable(false);
+
+========================================
+
+📄 10. 所有图像生成引擎
+----------------------
+196:    if request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111":
+207:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+250:    if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+256:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+262:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+269:        request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+270:        or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+332:        if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+337:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+341:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+391:            request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+392:            or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+477:        if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+529:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+564:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+618:            request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+619:            or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+
+查看每个引擎的实现位置：
+
+=== openai 引擎 ===
+250:    if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+251-        return (
+252-            request.app.state.config.IMAGE_GENERATION_MODEL
+253-            if request.app.state.config.IMAGE_GENERATION_MODEL
+254-            else "dall-e-2"
+255-        )
+--
+332:        if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+333-            return [
+334-                {"id": "dall-e-2", "name": "DALL·E 2"},
+335-                {"id": "dall-e-3", "name": "DALL·E 3"},
+336-            ]
+337-        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+--
+477:        if request.app.state.config.IMAGE_GENERATION_ENGINE == "openai":
+478-            headers = {}
+479-            headers["Authorization"] = (
+480-                f"Bearer {request.app.state.config.IMAGES_OPENAI_API_KEY}"
+481-            )
+482-            headers["Content-Type"] = "application/json"
+
+=== automatic1111 引擎 ===
+196:    if request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111":
+197-        try:
+198-            r = requests.get(
+199-                url=f"{request.app.state.config.AUTOMATIC1111_BASE_URL}/sdapi/v1/options",
+200-                headers={"authorization": get_automatic1111_api_auth(request)},
+201-            )
+--
+269:        request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+270-        or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+271-    ):
+272-        try:
+273-            r = requests.get(
+274-                url=f"{request.app.state.config.AUTOMATIC1111_BASE_URL}/sdapi/v1/options",
+--
+391:            request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+392-            or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+393-        ):
+394-            r = requests.get(
+395-                url=f"{request.app.state.config.AUTOMATIC1111_BASE_URL}/sdapi/v1/sd-models",
+396-                headers={"authorization": get_automatic1111_api_auth(request)},
+--
+618:            request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
+619-            or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
+620-        ):
+621-            if form_data.model:
+622-                set_image_model(form_data.model)
+623-
+
+=== comfyui 引擎 ===
+207:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+208-
+209-        headers = None
+210-        if request.app.state.config.COMFYUI_API_KEY:
+211-            headers = {
+212-                "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+--
+262:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+263-        return (
+264-            request.app.state.config.IMAGE_GENERATION_MODEL
+265-            if request.app.state.config.IMAGE_GENERATION_MODEL
+266-            else ""
+267-        )
+--
+341:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+342-            # TODO - get models from comfyui
+343-            headers = {
+344-                "Authorization": f"Bearer {request.app.state.config.COMFYUI_API_KEY}"
+345-            }
+346-            r = requests.get(
+--
+564:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+565-            data = {
+566-                "prompt": form_data.prompt,
+567-                "width": width,
+568-                "height": height,
+569-                "n": form_data.n,
+
+=== gemini 引擎 ===
+256:    elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+257-        return (
+258-            request.app.state.config.IMAGE_GENERATION_MODEL
+259-            if request.app.state.config.IMAGE_GENERATION_MODEL
+260-            else "imagen-3.0-generate-002"
+261-        )
+--
+337:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+338-            return [
+339-                {"id": "imagen-3-0-generate-002", "name": "imagen-3.0 generate-002"},
+340-            ]
+341-        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "comfyui":
+342-            # TODO - get models from comfyui
+--
+529:        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "gemini":
+530-            headers = {}
+531-            headers["Content-Type"] = "application/json"
+532-            headers["x-goog-api-key"] = request.app.state.config.IMAGES_GEMINI_API_KEY
+533-
+534-            model = get_image_model(request)
+
+========================================
+
+🔍 11. 搜索自定义 Workflow 文件
+-------------------------------
+
+搜索可能的模板目录：
+
+========================================
+
+📄 12. ComfyUI 环境变量
+----------------------
+.env.example 中的 ComfyUI 配置：
+
+========================================
+
+💾 13. 配置存储机制
+-------------------
+查找get_config_value函数：
+backend/open_webui/config.py:172:def get_config_value(config_path: str):
+backend/open_webui/config.py-173-    path_parts = config_path.split(".")
+backend/open_webui/config.py-174-    cur_config = CONFIG_DATA
+backend/open_webui/config.py-175-    for key in path_parts:
+backend/open_webui/config.py-176-        if key in cur_config:
+backend/open_webui/config.py-177-            cur_config = cur_config[key]
+backend/open_webui/config.py-178-        else:
+backend/open_webui/config.py-179-            return None
+backend/open_webui/config.py-180-    return cur_config
+backend/open_webui/config.py-181-
+backend/open_webui/config.py-182-
+backend/open_webui/config.py-183-PERSISTENT_CONFIG_REGISTRY = []
+backend/open_webui/config.py-184-
+backend/open_webui/config.py-185-
+backend/open_webui/config.py-186-def save_config(config):
+backend/open_webui/config.py-187-    global CONFIG_DATA
+backend/open_webui/config.py-188-    global PERSISTENT_CONFIG_REGISTRY
+backend/open_webui/config.py-189-    try:
+backend/open_webui/config.py-190-        save_to_db(config)
+backend/open_webui/config.py-191-        CONFIG_DATA = config
+backend/open_webui/config.py-192-
+
+查找set_config_value函数：
+
+========================================
+
+📄 14. 应用启动时的配置初始化
+------------------------------
+134:    COMFYUI_BASE_URL,
+135:    COMFYUI_API_KEY,
+136:    COMFYUI_WORKFLOW,
+137:    COMFYUI_WORKFLOW_NODES,
+138:    ENABLE_IMAGE_GENERATION,
+140:    IMAGE_GENERATION_ENGINE,
+141:    IMAGE_GENERATION_MODEL,
+757:app.state.config.IMAGE_GENERATION_ENGINE = IMAGE_GENERATION_ENGINE
+758:app.state.config.ENABLE_IMAGE_GENERATION = ENABLE_IMAGE_GENERATION
+767:app.state.config.IMAGE_GENERATION_MODEL = IMAGE_GENERATION_MODEL
+774:app.state.config.COMFYUI_BASE_URL = COMFYUI_BASE_URL
+775:app.state.config.COMFYUI_API_KEY = COMFYUI_API_KEY
+776:app.state.config.COMFYUI_WORKFLOW = COMFYUI_WORKFLOW
+777:app.state.config.COMFYUI_WORKFLOW_NODES = COMFYUI_WORKFLOW_NODES
+1294:                    "enable_image_generation": app.state.config.ENABLE_IMAGE_GENERATION,
+
+========================================
+
+📦 15. Python 依赖检查
+----------------------
+图像生成相关的依赖：
+
+========================================
+
+🧪 16. ComfyUI 相关测试
+----------------------
+
+========================================
+
+📝 17. 日志配置
+---------------
+backend/open_webui/routers/functions.py:17:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/functions.py:20:log.setLevel(SRC_LOG_LEVELS["MAIN"])
+backend/open_webui/routers/files.py:21:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/files.py:38:log.setLevel(SRC_LOG_LEVELS["MODELS"])
+backend/open_webui/routers/tasks.py:38:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/tasks.py:42:log.setLevel(SRC_LOG_LEVELS["MODELS"])
+backend/open_webui/routers/users.py:18:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/users.py:27:log.setLevel(SRC_LOG_LEVELS["MODELS"])
+backend/open_webui/routers/tools.py:20:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/tools.py:25:log.setLevel(SRC_LOG_LEVELS["MAIN"])
+backend/open_webui/routers/groups.py:19:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/groups.py:23:log.setLevel(SRC_LOG_LEVELS["MAIN"])
+backend/open_webui/routers/auths.py:30:    SRC_LOG_LEVELS,
+backend/open_webui/routers/auths.py:59:log.setLevel(SRC_LOG_LEVELS["MAIN"])
+backend/open_webui/routers/openai.py:32:from open_webui.env import ENV, SRC_LOG_LEVELS
+backend/open_webui/routers/openai.py:48:log.setLevel(SRC_LOG_LEVELS["OPENAI"])
+backend/open_webui/routers/utils.py:17:from open_webui.env import SRC_LOG_LEVELS
+backend/open_webui/routers/utils.py:21:log.setLevel(SRC_LOG_LEVELS["MAIN"])
+backend/open_webui/routers/retrieval.py:97:    SRC_LOG_LEVELS,
+backend/open_webui/routers/retrieval.py:124:log.setLevel(SRC_LOG_LEVELS["RAG"])
+
+========================================
+
+🐳 18. Docker 配置
+-----------------
+
+========================================
+
+📚 19. 相关文档
+--------------
+./CHANGELOG.md
+./node_modules/@huggingface/transformers/README.md
+./README.md
+./setupguide.md
+
+========================================
+
+📊 20. 关键信息总结
+-------------------
+Python文件数量（包含comfyui）:
+       3
+
+前端文件数量（包含comfyui）:
+       1
+
+ComfyUI相关配置项数量:
+12
+
+========================================
+
+✅ 完整审查完成！
+
+💡 接下来请：
+1. 仔细阅读上面的输出
+2. 确认ComfyUI的实现方式
+3. 告诉我你的发现
+4. 我们再讨论如何增强

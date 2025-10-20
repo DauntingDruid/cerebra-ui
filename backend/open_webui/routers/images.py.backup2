@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import time
 import io
 import json
 import logging
@@ -25,7 +24,6 @@ from open_webui.utils.images.comfyui import (
 from open_webui.models.image_sessions import ImageSessions, ImageSessionForm
 from open_webui.models.chats import Chats
 from open_webui.utils.images.fal_flux import FalFluxClient
-from open_webui.utils.images.prompt_analyzer import PromptAnalyzer
 from open_webui.models.files import Files
 from pydantic import BaseModel
 
@@ -38,17 +36,6 @@ IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 router = APIRouter()
-
-# Global PromptAnalyzer instance
-_prompt_analyzer = None
-
-def get_prompt_analyzer() -> PromptAnalyzer:
-    """Get or create PromptAnalyzer singleton"""
-    global _prompt_analyzer
-    if _prompt_analyzer is None:
-        _prompt_analyzer = PromptAnalyzer()
-    return _prompt_analyzer
-################
 
 
 @router.get("/config")
@@ -721,8 +708,6 @@ async def smart_image_generation(
     - Auto-detects text2img vs img2img
     - Maintains parent-child session chain
     """
-    start_time = time.time()
-    
     try:
         # 1. Verify chat ownership
         chat = Chats.get_chat_by_id_and_user_id(form_data.chat_id, user.id)
@@ -732,75 +717,31 @@ async def smart_image_generation(
                 detail={"error": "not_found", "message": "Chat not found or access denied"}
             )
         
-
-       ############# 
         # 2. Check for parent session
         last_session = ImageSessions.get_last_session(form_data.chat_id, user.id)
-        has_parent = last_session is not None  
         
-        # 3. ✅ NEW: Intelligent analysis (mode + size)
-        analyzer = get_prompt_analyzer()
-        analysis = await analyzer.analyze(
-            prompt=form_data.prompt,
-            has_parent=has_parent,
-            has_uploaded=False  # Phase 2.5 doesn't support uploads yet
-        )
-        
-        suggested_mode = analysis["mode"]
-        suggested_size = analysis["image_size"]
-        mode_confidence = analysis.get("mode_confidence", 0.8)
-        size_confidence = analysis.get("size_confidence", 0.7)
-        reasoning = analysis.get("reasoning", "")
-        
-        log.info(
-            f"[SmartGen] Analysis: mode={suggested_mode} (conf={mode_confidence:.2f}) "
-            f"size={suggested_size} (conf={size_confidence:.2f}) reason='{reasoning}'"
-        )
-        
-        # ✅ NEW: Size priority logic
-        # Priority: User-specified > LLM-analyzed > Default
-        if form_data.image_size and form_data.image_size != "square_hd":
-            final_image_size = form_data.image_size
-            size_source = "user_specified"
-            log.info(f"[SmartGen] Using user-specified size: {final_image_size}")
-        else:
-            final_image_size = suggested_size
-            size_source = "llm_analyzed"
-            log.info(f"[SmartGen] Using analyzed size: {final_image_size} (conf={size_confidence:.2f})")
-        
-        # ✅ CHANGED: Verify parent session ownership
-        if last_session and last_session.user_id != user.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"error": "forbidden", "message": "Parent session not owned by user"}
-            )
-        
-        # ✅ CHANGED: Use analyzer's mode
-        mode = suggested_mode
-        log.info(f"[SmartGen] Using mode: {mode} (from analyzer)")
-        ###############
+        # 3. Determine mode
+        mode = "img2img" if last_session else "text2img"
         
         # 4. Initialize Fal client
         fal_client = FalFluxClient()
         
-        # 5. Generate image with timeout ✅ NEW
+        # 5. Generate image
         if mode == "text2img":
             log.info(f"[SmartGen] text2img for chat={form_data.chat_id}")
-            result = await asyncio.wait_for(
-                fal_client.text2img(
-                    prompt=form_data.prompt,
-                    image_size=final_image_size,
-                    num_inference_steps=form_data.num_inference_steps,
-                    guidance_scale=form_data.guidance_scale,
-                    seed=form_data.seed
-                ),
-                timeout=60.0
+            result = await fal_client.text2img(
+                prompt=form_data.prompt,
+                image_size=form_data.image_size,
+                num_inference_steps=form_data.num_inference_steps,
+                guidance_scale=form_data.guidance_scale,
+                seed=form_data.seed
             )
         else:
             # img2img: read parent image from disk
             log.info(f"[SmartGen] img2img for chat={form_data.chat_id}, parent={last_session.file_id}")
             
             # Get parent file from database
+            from open_webui.models.files import Files
             parent_file = Files.get_file_by_id(last_session.file_id)
             
             if not parent_file or not parent_file.path:
@@ -810,17 +751,14 @@ async def smart_image_generation(
             with open(parent_file.path, 'rb') as f:
                 parent_image_bytes = f.read()
             
-            result = await asyncio.wait_for(
-                fal_client.img2img(
-                    prompt=form_data.prompt,
-                    image_bytes=parent_image_bytes,
-                    strength=0.75,
-                    image_size=final_image_size,
-                    num_inference_steps=form_data.num_inference_steps,
-                    guidance_scale=form_data.guidance_scale,
-                    seed=form_data.seed
-                ),
-                timeout=90.0  # img2img needs more time
+            result = await fal_client.img2img(
+                prompt=form_data.prompt,
+                image_bytes=parent_image_bytes,
+                strength=0.75,
+                image_size=form_data.image_size,
+                num_inference_steps=form_data.num_inference_steps,
+                guidance_scale=form_data.guidance_scale,
+                seed=form_data.seed
             )
         
         # 6. Download generated image from Fal
@@ -829,14 +767,7 @@ async def smart_image_generation(
         if not image_data:
             raise ValueError("Failed to download generated image from Fal")
         
-        # 7. ✅ NEW: Check file size
-        if len(image_data) > 15 * 1024 * 1024:  # 15MB
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail={"error": "image_too_large", "message": "Generated image exceeds 15MB"}
-            )
-        
-        # 8. Upload to our storage
+        # 7. Upload to our storage
         metadata = {
             "prompt": form_data.prompt,
             "mode": mode,
@@ -848,17 +779,10 @@ async def smart_image_generation(
         
         file_url = upload_image(request, metadata, image_data, content_type, user)
         
-        # 9. ✅ NEW: Extract file_id safely (robust parsing)
-        segments = file_url.rstrip("/").split("/")
-        if "files" in segments and len(segments) >= segments.index("files") + 2:
-            file_id = segments[segments.index("files") + 1]
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "internal_error", "message": f"Unexpected file URL format: {file_url}"}
-            )
+        # 8. Extract file_id from URL
+        file_id = file_url.split("/")[-1]
         
-        # 10. Save session to database
+        # 9. Save session to database
         session = ImageSessions.create_session(ImageSessionForm(
             chat_id=form_data.chat_id,
             user_id=user.id,
@@ -871,16 +795,6 @@ async def smart_image_generation(
             meta_json={
                 "engine": "fal",
                 "model": "fal-ai/flux-pro/v1.1",
-                # ✅ Size detection metadata
-                "suggested_size": suggested_size,
-                "size_confidence": size_confidence,
-                "final_size": final_image_size,
-                "size_source": size_source,
-                # ✅ Mode detection metadata
-                "suggested_mode": suggested_mode,
-                "mode_confidence": mode_confidence,
-                "mode_reasoning": reasoning,
-                "actual_mode": mode,
                 "image_size": form_data.image_size,
                 "steps": form_data.num_inference_steps,
                 "guidance_scale": form_data.guidance_scale,
@@ -889,35 +803,18 @@ async def smart_image_generation(
             }
         ))
         
-        # 11. ✅ NEW: Enhanced logging with latency
-        latency_ms = (time.time() - start_time) * 1000
-        log.info(
-            f"[SmartGen] Success: session={session.id} mode={mode} "
-            f"chat={form_data.chat_id} user={user.id} latency_ms={latency_ms:.0f}"
-        )
+        log.info(f"[SmartGen] Success: session={session.id} mode={mode} chat={form_data.chat_id}")
         
-        # 12. ✅ NEW: Enhanced response with width/height/engine/model
+        # 10. Return response
         return {
             "url": file_url,
             "file_id": file_id,
             "session_id": session.id,
             "mode": mode,
             "seed": result["seed"],
-            "parent_session_id": last_session.id if last_session else None,
-            "width": result["width"],
-            "height": result["height"],
-            "engine": "fal",
-            "model": "fal-ai/flux-pro/v1.1",
-            "meta_json": session.meta_json
+            "parent_session_id": last_session.id if last_session else None
         }
         
-    except asyncio.TimeoutError:
-        latency = time.time() - start_time
-        log.error(f"[SmartGen] Timeout after {latency:.1f}s")
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail={"error": "timeout", "message": "Image generation timed out"}
-        )
     except HTTPException:
         raise
     except ValueError as e:
