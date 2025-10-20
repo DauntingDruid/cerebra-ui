@@ -16,8 +16,8 @@ services:
       - WEBUI_SESSION_COOKIE_SECURE=false
       - WEBUI_AUTH=true 
       ### image
-      - FAL_KEY=bca68c6c-24f6-4501-b7fb-fa70493969cb:bf3afc9cd3106c456c884ba6d4ab7f5a
-      - OPENAI_API_KEY=sk-proj-q7mX9bjvlkvGIvQJgRIPUlpxnnRgihhIPta4GxtS0q2V241e4NmCvwa6hiZZNf37Tc7xjfNARjT3BlbkFJgr1WZy5ri4SA7qsBcwUjbTt9kzUQ9WLiwlKsgMZNt41
+      - FAL_KEY=
+      - OPENAI_API_KEY=
       - FAL_MODEL=fal-ai/flux-pro/v1.1
     volumes:
       - ./build:/app/build:ro
