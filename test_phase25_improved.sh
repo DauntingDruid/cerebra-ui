@@ -6,7 +6,7 @@ echo "============================================"
 echo "Phase 2.5 Full Integration Test (Patched)"
 echo "============================================"
 
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAwZjcyYmU1LTVkNWMtNDc1ZC1hMjgwLWI0YjE5OThjMWYwZSJ9.4mCPR5aTUnjh7bADE7piE13Y2UO9I7IePQTULM4thm8"
+TOKEN=""
 API_URL="http://localhost:3000/api/v1"
 
 # Helper: create chat
