@@ -45,7 +45,7 @@ docker exec open-webui find /app/build -name "*.js" -exec grep -l "generations" 
 echo ""
 echo "5️⃣ 测试实际API调用（需要token）"
 echo "-------------------------------"
-TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAwZjcyYmU1LTVkNWMtNDc1ZC1hMjgwLWI0YjE5OThjMWYwZSJ9.4mCPR5aTUnjh7bADE7piE13Y2UO9I7IePQTULM4thm8"
+TOKEN=""
 
 # 测试smart端点是否真的可以访问
 curl -X POST http://localhost:3000/api/v1/images/generations/smart \
