@@ -78,6 +78,18 @@ async def get_config(request: Request, user=Depends(get_admin_user)):
             "GEMINI_API_BASE_URL": request.app.state.config.IMAGES_GEMINI_API_BASE_URL,
             "GEMINI_API_KEY": request.app.state.config.IMAGES_GEMINI_API_KEY,
         },
+        #################fal
+        "fal": {
+            "FAL_API_KEY": request.app.state.config.FAL_API_KEY,
+            "FAL_API_BASE_URL": request.app.state.config.FAL_API_BASE_URL,
+            "FAL_MODEL": request.app.state.config.FAL_MODEL,  # 🆕 NEW
+            "ENABLE_FAL_SMART_MODE": request.app.state.config.ENABLE_FAL_SMART_MODE,
+            "FAL_OPENAI_API_KEY": request.app.state.config.FAL_OPENAI_API_KEY,
+            "FAL_DEFAULT_IMAGE_SIZE": request.app.state.config.FAL_DEFAULT_IMAGE_SIZE,
+            "FAL_NUM_INFERENCE_STEPS": request.app.state.config.FAL_NUM_INFERENCE_STEPS,
+            "FAL_GUIDANCE_SCALE": request.app.state.config.FAL_GUIDANCE_SCALE,
+        },
+        ##########
     }
 
 
@@ -105,6 +117,17 @@ class GeminiConfigForm(BaseModel):
     GEMINI_API_BASE_URL: str
     GEMINI_API_KEY: str
 
+##############fal
+class FalConfigForm(BaseModel):
+    FAL_API_KEY: str
+    FAL_API_BASE_URL: str
+    FAL_MODEL: str  # 🆕 NEW
+    ENABLE_FAL_SMART_MODE: bool
+    FAL_OPENAI_API_KEY: str
+    FAL_DEFAULT_IMAGE_SIZE: str
+    FAL_NUM_INFERENCE_STEPS: int
+    FAL_GUIDANCE_SCALE: float
+#############
 
 class ConfigForm(BaseModel):
     enabled: bool
@@ -114,7 +137,8 @@ class ConfigForm(BaseModel):
     automatic1111: Automatic1111ConfigForm
     comfyui: ComfyUIConfigForm
     gemini: GeminiConfigForm
-
+    #####fal
+    fal: FalConfigForm
 
 @router.post("/config/update")
 async def update_config(
@@ -169,6 +193,17 @@ async def update_config(
     request.app.state.config.COMFYUI_WORKFLOW_NODES = (
         form_data.comfyui.COMFYUI_WORKFLOW_NODES
     )
+    # 🆕 ========== Fal Flux ========== 🆕
+    request.app.state.config.FAL_API_KEY = form_data.fal.FAL_API_KEY
+    request.app.state.config.FAL_API_BASE_URL = (
+        form_data.fal.FAL_API_BASE_URL.strip("/")  #  strip
+    )
+    request.app.state.config.FAL_MODEL = form_data.fal.FAL_MODEL
+    request.app.state.config.ENABLE_FAL_SMART_MODE = form_data.fal.ENABLE_FAL_SMART_MODE
+    request.app.state.config.FAL_OPENAI_API_KEY = form_data.fal.FAL_OPENAI_API_KEY
+    request.app.state.config.FAL_DEFAULT_IMAGE_SIZE = form_data.fal.FAL_DEFAULT_IMAGE_SIZE
+    request.app.state.config.FAL_NUM_INFERENCE_STEPS = form_data.fal.FAL_NUM_INFERENCE_STEPS
+    request.app.state.config.FAL_GUIDANCE_SCALE = form_data.fal.FAL_GUIDANCE_SCALE
 
     return {
         "enabled": request.app.state.config.ENABLE_IMAGE_GENERATION,
@@ -194,6 +229,17 @@ async def update_config(
         "gemini": {
             "GEMINI_API_BASE_URL": request.app.state.config.IMAGES_GEMINI_API_BASE_URL,
             "GEMINI_API_KEY": request.app.state.config.IMAGES_GEMINI_API_KEY,
+        },
+        # 🆕 ========== Fal Flux ========== 🆕
+        "fal": {
+            "FAL_API_KEY": request.app.state.config.FAL_API_KEY,
+            "FAL_API_BASE_URL": request.app.state.config.FAL_API_BASE_URL,
+            "FAL_MODEL": request.app.state.config.FAL_MODEL,
+            "ENABLE_FAL_SMART_MODE": request.app.state.config.ENABLE_FAL_SMART_MODE,
+            "FAL_OPENAI_API_KEY": request.app.state.config.FAL_OPENAI_API_KEY,
+            "FAL_DEFAULT_IMAGE_SIZE": request.app.state.config.FAL_DEFAULT_IMAGE_SIZE,
+            "FAL_NUM_INFERENCE_STEPS": request.app.state.config.FAL_NUM_INFERENCE_STEPS,
+            "FAL_GUIDANCE_SCALE": request.app.state.config.FAL_GUIDANCE_SCALE,
         },
     }
 
@@ -633,6 +679,95 @@ async def image_generations(
                 )
                 images.append({"url": url})
             return images
+        #####fal--###############################################
+        elif request.app.state.config.IMAGE_GENERATION_ENGINE == "fal":
+            log.info("[FalFlux] Basic text2img generation (non-chat context)")
+            try:
+                # Initialize client
+                fal_client = FalFluxClient(
+                    api_key=request.app.state.config.FAL_API_KEY,
+                    model=request.app.state.config.FAL_MODEL
+                )
+                
+                # Get size from form_data or config
+                image_size = form_data.size if form_data.size else request.app.state.config.FAL_DEFAULT_IMAGE_SIZE
+                
+                # Parse size for Fal API format
+                if "x" in image_size:
+                    width, height = map(int, image_size.split("x"))
+                    if width == height:
+                        image_size = "square_hd"
+                    elif width > height:
+                        image_size = "landscape_4_3"
+                    else:
+                        image_size = "portrait_4_3"
+                
+                # Call Fal API with timeout
+                result = await asyncio.wait_for(
+                    fal_client.text2img(
+                        prompt=form_data.prompt,
+                        image_size=image_size,
+                        num_inference_steps=request.app.state.config.FAL_NUM_INFERENCE_STEPS,
+                        guidance_scale=request.app.state.config.FAL_GUIDANCE_SCALE,
+                        seed=None
+                    ),
+                    timeout=60.0
+                )
+                
+                # Download image from Fal
+                image_data, content_type = load_url_image_data(result["image_url"])
+                
+                if not image_data:
+                    log.error("[FalFlux] Failed to download image from Fal")
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=ERROR_MESSAGES.DEFAULT("Failed to download generated image")
+                    )
+                
+                # Check file size
+                if len(image_data) > 15 * 1024 * 1024:  # 15MB
+                    log.error(f"[FalFlux] Image too large: {len(image_data)} bytes")
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=ERROR_MESSAGES.DEFAULT("Generated image exceeds 15MB")
+                    )
+                
+                # Upload to Open WebUI storage
+                metadata = {
+                    "prompt": form_data.prompt,
+                    "engine": "fal",
+                    "model": request.app.state.config.FAL_MODEL,
+                    "fal_seed": result["seed"],
+                    "width": result["width"],
+                    "height": result["height"]
+                }
+                
+                url = upload_image(request, metadata, image_data, content_type, user)
+                
+                images = [{"url": url}]
+                
+                log.info(
+                    f"[FalFlux] Generated image: {result['width']}x{result['height']}, "
+                    f"seed={result['seed']}"
+                )
+                
+                return images
+            
+            except asyncio.TimeoutError:
+                log.error("[FalFlux] Generation timed out after 60s")
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail=ERROR_MESSAGES.DEFAULT("Image generation timed out")
+                )
+            except HTTPException:
+                raise
+            except Exception as e:
+                log.error(f"[FalFlux] Generation failed: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=ERROR_MESSAGES.DEFAULT(f"Image generation failed: {str(e)}")
+                )
+            ##############################################
         elif (
             request.app.state.config.IMAGE_GENERATION_ENGINE == "automatic1111"
             or request.app.state.config.IMAGE_GENERATION_ENGINE == ""
@@ -699,7 +834,6 @@ async def image_generations(
 # ========================================
 # Smart Multi-Round Image Generation (Fal Flux)
 # ========================================
-
 
 class SmartGenerateImageForm(BaseModel):
     chat_id: str
@@ -781,7 +915,10 @@ async def smart_image_generation(
         ###############
         
         # 4. Initialize Fal client
-        fal_client = FalFluxClient()
+        fal_client = FalFluxClient(
+            api_key=request.app.state.config.FAL_API_KEY,
+            model=request.app.state.config.FAL_MODEL  # 🆕 NEW
+        )
         
         # 5. Generate image with timeout ✅ NEW
         if mode == "text2img":
@@ -814,7 +951,7 @@ async def smart_image_generation(
                 fal_client.img2img(
                     prompt=form_data.prompt,
                     image_bytes=parent_image_bytes,
-                    strength=0.75,
+                    strength=0.35,
                     image_size=final_image_size,
                     num_inference_steps=form_data.num_inference_steps,
                     guidance_scale=form_data.guidance_scale,

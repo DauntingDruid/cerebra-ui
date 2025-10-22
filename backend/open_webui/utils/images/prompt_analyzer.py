@@ -9,6 +9,7 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
+
 class PromptAnalyzer:
     """
     Analyze user prompts to determine:
@@ -90,9 +91,11 @@ English: portrait, landscape, square, vertical, horizontal, wallpaper, avatar, w
 - Avatar/logo → square_hd
 
 **Context Consideration:**
-- If has_parent=true AND user uses modify keywords → img2img
-- If has_parent=true BUT describes completely different subject → text2img
-- If no parent/upload → text2img
+- has_parent=true: There is a previously generated image in the conversation history
+- has_uploaded=true: User uploaded a new image in this message
+- If (has_parent OR has_uploaded) AND modify keywords → img2img
+- If (has_parent OR has_uploaded) BUT completely different subject → text2img
+- If neither parent nor upload → text2img
 
 Return ONLY valid JSON (no markdown):
 {
@@ -281,3 +284,15 @@ Return JSON analysis."""
             "size_confidence": size_confidence,
             "reasoning": reasoning
         }
+    
+# ===== Singleton instance =====
+_analyzer_instance = None
+
+def get_prompt_analyzer() -> PromptAnalyzer:
+    """
+    Get singleton PromptAnalyzer instance
+    """
+    global _analyzer_instance
+    if _analyzer_instance is None:
+        _analyzer_instance = PromptAnalyzer()
+    return _analyzer_instance

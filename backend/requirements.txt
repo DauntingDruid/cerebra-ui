@@ -141,3 +141,7 @@ opentelemetry-instrumentation-requests==0.52b1
 opentelemetry-instrumentation-logging==0.52b1
 opentelemetry-instrumentation-httpx==0.52b1
 opentelemetry-instrumentation-aiohttp-client==0.52b1
+
+
+# Fal Flux API client for image generation
+fal-client>=0.4.0

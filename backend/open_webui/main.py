@@ -145,6 +145,15 @@ from open_webui.config import (
     IMAGES_OPENAI_API_KEY,
     IMAGES_GEMINI_API_BASE_URL,
     IMAGES_GEMINI_API_KEY,
+    ###########Fal
+    ENABLE_FAL_SMART_MODE,
+    FAL_API_KEY,
+    FAL_API_BASE_URL,
+    FAL_MODEL,
+    FAL_DEFAULT_IMAGE_SIZE,
+    FAL_NUM_INFERENCE_STEPS,
+    FAL_GUIDANCE_SCALE,
+    FAL_OPENAI_API_KEY,
     # Audio
     AUDIO_STT_ENGINE,
     AUDIO_STT_MODEL,
@@ -779,6 +788,15 @@ app.state.config.COMFYUI_WORKFLOW_NODES = COMFYUI_WORKFLOW_NODES
 app.state.config.IMAGE_SIZE = IMAGE_SIZE
 app.state.config.IMAGE_STEPS = IMAGE_STEPS
 
+##############FAL############
+app.state.config.ENABLE_FAL_SMART_MODE = ENABLE_FAL_SMART_MODE
+app.state.config.FAL_API_KEY = FAL_API_KEY
+app.state.config.FAL_API_BASE_URL = FAL_API_BASE_URL
+app.state.config.FAL_MODEL = FAL_MODEL
+app.state.config.FAL_DEFAULT_IMAGE_SIZE = FAL_DEFAULT_IMAGE_SIZE
+app.state.config.FAL_NUM_INFERENCE_STEPS = FAL_NUM_INFERENCE_STEPS
+app.state.config.FAL_GUIDANCE_SCALE = FAL_GUIDANCE_SCALE
+app.state.config.FAL_OPENAI_API_KEY = FAL_OPENAI_API_KEY
 
 ########################################
 #

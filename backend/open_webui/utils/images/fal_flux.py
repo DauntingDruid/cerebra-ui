@@ -11,15 +11,16 @@ log = logging.getLogger(__name__)
 class FalFluxClient:
     """Wrapper for Fal Flux API"""
     
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("FAL_KEY")
-        self.model = "fal-ai/flux-pro/v1.1"
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = str(api_key) if api_key is not None else os.getenv("FAL_KEY")
+        # 🆕 NEW: Read model from env or parameter, with fallback
+        self.model = str(model) if model is not None else os.getenv("FAL_MODEL", "fal-ai/flux-pro/v1.1")
         
         if not self.api_key:
             raise ValueError("FAL_KEY not set")
         
         os.environ["FAL_KEY"] = self.api_key
-        log.info(f"[FalFlux] Initialized: {self.model}")
+        log.info(f"[FalFlux] Initialized: model={self.model}")
     
     async def text2img(
         self,
@@ -69,7 +70,7 @@ class FalFluxClient:
         self,
         prompt: str,
         image_bytes: bytes,
-        strength: float = 0.75,
+        strength: float = 0.35,
         image_size: str = "square_hd",
         num_inference_steps: int = 28,
         guidance_scale: float = 3.5,
