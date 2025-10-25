@@ -1,25 +1,24 @@
 <script>
 	import { toast } from 'svelte-sonner';
-	import { onMount, getContext, tick } from 'svelte';
+	import { onMount, onDestroy, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 
 	import { getBackendConfig } from '$lib/apis';
-	import { ldapUserSignIn, getSessionUser, userSignIn } from '$lib/apis/auths';
+	import { getSessionUser } from '$lib/apis/auths';
 
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME, config, user, socket } from '$lib/stores';
-
-	import { generateInitialsImage, canvasPixelTest } from '$lib/utils';
-
-	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	const i18n = getContext('i18n');
 
 	let loaded = false;
 	let email = '';
 	let password = '';
-	let ldapUsername = '';
+	let turnstileToken = '';
+	let turnstileWidgetId;
+	
+	const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
 	const querystringValue = (key) => {
 		const querystring = window.location.search;
@@ -27,10 +26,136 @@
 		return urlParams.get(key);
 	};
 
-	const setSessionUser = async (sessionUser) => {
-		if (sessionUser) {
-			console.log(sessionUser);
-			toast.success($i18n.t(`You're now logged in.`));
+	function initTurnstile() {
+		const containerSelector = '#turnstile-widget';
+
+		if (!import.meta.env.VITE_TURNSTILE_SITE_KEY) {
+			console.error('❌ Missing VITE_TURNSTILE_SITE_KEY in .env');
+			toast.error('Security check not configured.');
+			return;
+		}
+
+		const widgetContainer = document.querySelector(containerSelector);
+		if (!widgetContainer) {
+			console.warn('⚠️ Widget container not found — retrying…');
+			setTimeout(initTurnstile, 150);
+			return;
+		}
+
+		if (!window.turnstile || typeof window.turnstile.render !== 'function') {
+			console.warn('⚠️ Turnstile script not ready — retrying…');
+			setTimeout(initTurnstile, 150);
+			return;
+		}
+
+		// Clean up any existing widget
+		if (turnstileWidgetId !== undefined) {
+			try {
+			window.turnstile.remove(turnstileWidgetId);
+			console.log('♻️ Removed previous widget');
+			} catch (e) {
+			console.warn('Cleanup failed:', e);
+			}
+		}
+
+		widgetContainer.innerHTML = '';
+
+		try {
+			console.log('🎯 Rendering Turnstile widget (manual click mode)…');
+			turnstileWidgetId = window.turnstile.render(containerSelector, {
+			sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY,
+			theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+			size: 'normal',
+			appearance: 'always', // ✅ Force a visible widget
+			action: 'login',      // Optional, helps Turnstile analytics
+
+			// Callbacks
+			callback: (token) => {
+				turnstileToken = token;
+				console.log('✅ Turnstile verified manually');
+			},
+			'error-callback': () => {
+				console.error('❌ Turnstile error');
+				turnstileToken = '';
+				toast.error('Verification failed. Please try again.');
+			},
+			'expired-callback': () => {
+				console.log('⏰ Turnstile expired');
+				turnstileToken = '';
+			},
+			'timeout-callback': () => {
+				console.log('⏰ Turnstile timeout');
+				turnstileToken = '';
+			},
+			});
+		} catch (e) {
+			console.error('❌ Failed to render Turnstile:', e);
+			toast.error('Security verification failed to load.');
+		}
+		}
+
+
+	const signInHandler = async () => {
+		console.log('🔐 Sign in attempt...');
+		console.log('📧 Email:', email);
+		console.log('🎫 Turnstile token:', turnstileToken ? 'Present' : 'Missing');
+
+		// Check Turnstile
+		if (!turnstileToken) {
+			toast.error('Please complete the security verification.');
+			return;
+		}
+
+		try {
+			// Call backend signin
+			console.log('📡 Calling backend signin...');
+			const response = await fetch(`${WEBUI_BASE_URL}/api/v1/auths/signin`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					email: email.toLowerCase(),
+					password: password
+				})
+			});
+
+			console.log('📬 Response status:', response.status);
+
+			if (!response.ok) {
+				const error = await response.json();
+				console.error('❌ Backend error:', error);
+				throw new Error(error.detail || 'Sign in failed');
+			}
+
+			const sessionUser = await response.json();
+			
+			console.log('✅ Sign in response:', sessionUser);
+			console.log('📧 email_verified field:', sessionUser.email_verified);
+			console.log('📧 email_verified type:', typeof sessionUser.email_verified);
+
+			// CRITICAL CHECK: Email verification status
+			if (sessionUser.email_verified === false) {
+				console.log('❌ Email NOT verified - redirecting to pending page');
+				
+				// Store token
+				if (sessionUser.token) {
+					localStorage.token = sessionUser.token;
+				}
+				
+				toast.error('Email not verified. Please check your inbox.');
+				
+				// Redirect to pending page
+				console.log('🔀 Redirecting to /auth/verify-pending');
+				await goto(`/auth/verify-pending?email=${encodeURIComponent(sessionUser.email)}`);
+				return;
+			}
+
+			// Email IS verified - proceed with login
+			console.log('✅ Email verified - logging in');
+			
+			toast.success('You\'re now logged in.');
+			
 			if (sessionUser.token) {
 				localStorage.token = sessionUser.token;
 			}
@@ -40,60 +165,20 @@
 			await config.set(await getBackendConfig());
 
 			const redirectPath = querystringValue('redirect') || '/';
+			console.log('🏠 Redirecting to:', redirectPath);
 			goto(redirectPath);
+
+		} catch (error) {
+			console.error('❌ Sign in error:', error);
+			toast.error(error.message || 'Sign in failed');
+			
+			// Reset turnstile
+			if (window.turnstile && turnstileWidgetId !== undefined) {
+				window.turnstile.reset(turnstileWidgetId);
+				turnstileToken = '';
+			}
 		}
 	};
-
-	const signInHandler = async () => {
-		const sessionUser = await userSignIn(email, password).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-
-		await setSessionUser(sessionUser);
-	};
-
-	const ldapSignInHandler = async () => {
-		const sessionUser = await ldapUserSignIn(ldapUsername, password).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-		await setSessionUser(sessionUser);
-	};
-
-	const submitHandler = async () => {
-		if (mode === 'ldap') {
-			await ldapSignInHandler();
-		} else {
-			await signInHandler();
-		}
-	};
-
-	const checkOauthCallback = async () => {
-		if (!$page.url.hash) {
-			return;
-		}
-		const hash = $page.url.hash.substring(1);
-		if (!hash) {
-			return;
-		}
-		const params = new URLSearchParams(hash);
-		const token = params.get('token');
-		if (!token) {
-			return;
-		}
-		const sessionUser = await getSessionUser(token).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-		if (!sessionUser) {
-			return;
-		}
-		localStorage.token = token;
-		await setSessionUser(sessionUser);
-	};
-
-	let mode = $config?.features.enable_ldap ? 'ldap' : 'signin';
 
 	async function setLogoImage() {
 		await tick();
@@ -108,32 +193,75 @@
 
 				darkImage.onload = () => {
 					logo.src = '/static/favicon-dark.png';
-					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
+					logo.style.filter = '';
 				};
 
 				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)'; // Invert image if favicon-dark.png is missing
+					logo.style.filter = 'invert(1)';
 				};
 			}
 		}
 	}
 
 	onMount(async () => {
+		console.log('🚀 Login page mounted');
+		
+		// Check for verification success
+		const urlParams = new URLSearchParams(window.location.search);
+		if (urlParams.get('verified') === 'true') {
+			toast.success('Email verified successfully! You can now sign in.');
+		}
+
 		if ($user !== undefined) {
 			const redirectPath = querystringValue('redirect') || '/';
 			goto(redirectPath);
 		}
-		await checkOauthCallback();
 
 		loaded = true;
 		setLogoImage();
+
+		// Load Turnstile script
+		console.log('📦 Loading Turnstile script...');
+		const existing = document.querySelector('script[data-turnstile]');
+
+		if (!existing) {
+			const script = document.createElement('script');
+			script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+			script.async = true;
+			script.defer = true;
+			script.setAttribute('data-turnstile', '1');
+
+			script.onload = () => {
+				console.log('✅ Turnstile script loaded');
+				setTimeout(initTurnstile, 200);
+			};
+
+			script.onerror = () => {
+				console.error('❌ Failed to load Turnstile script');
+				toast.error('Failed to load security verification. Please refresh.');
+			};
+
+			document.head.appendChild(script);
+		} else {
+			console.log('♻️ Turnstile script already loaded');
+			if (window.turnstile) setTimeout(initTurnstile, 200);
+		}
+	});
+
+	onDestroy(() => {
+		if (window.turnstile && turnstileWidgetId !== undefined) {
+			try {
+				window.turnstile.remove(turnstileWidgetId);
+				console.log('🧹 Turnstile cleaned up');
+			} catch (e) {
+				console.log('Cleanup error:', e);
+			}
+		}
 	});
 </script>
 
 <svelte:head>
-	<title>
-		{`${$WEBUI_NAME}`}
-	</title>
+	<title>Sign In - {$WEBUI_NAME}</title>
 </svelte:head>
 
 <div class="w-full h-screen max-h-[100dvh] bg-white dark:bg-black">
@@ -160,41 +288,26 @@
 
 				<!-- Login Form -->
 				<form
-					class="space-y-6"
-					on:submit={(e) => {
-						e.preventDefault();
-						submitHandler();
-					}}
+				class="space-y-6"
+				on:submit={(e) => {
+					e.preventDefault();
+					signInHandler();
+				}}
 				>
-					{#if mode === 'ldap'}
-						<div>
-							<label for="username" class="block text-sm font-medium text-black dark:text-white mb-2">
-								Username
-							</label>
-							<input
-								id="username"
-								bind:value={ldapUsername}
-								type="text"
-								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-								placeholder="Enter your username"
-								required
-							/>
-						</div>
-					{:else}
-						<div>
-							<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-								Email
-							</label>
-							<input
-								id="email"
-								bind:value={email}
-								type="email"
-								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-								placeholder="Enter your email"
-								required
-							/>
-						</div>
-					{/if}
+
+					<div>
+						<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
+							Email
+						</label>
+						<input
+							id="email"
+							bind:value={email}
+							type="email"
+							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
+							placeholder="Enter your email"
+							required
+						/>
+					</div>
 
 					<div>
 						<div class="flex justify-between items-center mb-2">
@@ -203,7 +316,7 @@
 							</label>
 							<button
 								type="button"
-								class="text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA]"
+								class="text-sm text-[#A855F7] hover:text-[#9333EA]"
 								on:click={() => goto('/auth/forgot-password')}
 							>
 								Forgot?
@@ -219,9 +332,15 @@
 						/>
 					</div>
 
+					<!-- Cloudflare Turnstile -->
+					<div class="flex justify-center py-2">
+						<div id="turnstile-widget" style="min-height: 65px; width: 300px;"></div>
+					</div>
+
 					<button
 						type="submit"
-						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
+						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						disabled={!turnstileToken}
 					>
 						Sign In
 					</button>
@@ -234,14 +353,18 @@
 					</span>
 					<button
 						type="button"
-						class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
+						class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/signup')}
 					>
 						Sign Up
 					</button>
 				</div>
+
+				<!-- Debug Info (Remove in production) -->
+				<div class="mt-4 text-xs text-gray-500 text-center">
+					Turnstile: {turnstileToken ? '✅ Verified' : '⏳ Pending'}
+				</div>
 			{/if}
 		</div>
 	</div>
 </div>
-

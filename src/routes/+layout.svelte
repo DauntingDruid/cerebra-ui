@@ -433,40 +433,28 @@
 	};
 
 	onMount(async () => {
-		// STYLE-ONLY DEVELOPMENT SHORT-CIRCUIT
-		// If the URL contains ?styleonly=1 (or localStorage.styleOnly === '1'),
-		// we skip ALL backend/socket initialization and only render the UI.
-		// This makes style iteration extremely fast and avoids any API calls.
-		// To restore normal behavior, remove the query param and clear
-		// localStorage.styleOnly, or comment/remove this block.
 		try {
 			const isBrowser = typeof window !== 'undefined';
 			if (isBrowser) {
 				const url = new URL(window.location.href);
 				const styleOnly = url.searchParams.get('styleonly') === '1' || localStorage.styleOnly === '1';
 				if (styleOnly) {
-					// Minimal UI setup: theme + mobile flag + i18n language
+					
 					theme.set(localStorage.theme);
 					mobile.set(window.innerWidth < BREAKPOINT);
 					initI18n('en-US');
 					changeLanguage('en-US');
 
-					// remove splash immediately in style-only mode
+					
 					document.getElementById('splash-screen')?.remove();
 					
 					loaded = true;
-					return; // stop here — no backend, no sockets
+					return; 
 				}
 			}
 		} catch (e) {
 			console.warn('styleonly guard failed, continuing normally', e);
 		}
-
-
-
-
-
-
 
 		
 		if (typeof window !== 'undefined' && window.applyTheme) {
@@ -495,15 +483,14 @@
 		// Listen for messages on the BroadcastChannel
 		bc.onmessage = (event) => {
 			if (event.data === 'active') {
-				isLastActiveTab.set(false); // Another tab became active
+				isLastActiveTab.set(false);
 			}
 		};
 
-		// Set yourself as the last active tab when this tab is focused
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === 'visible') {
-				isLastActiveTab.set(true); // This tab is now the active tab
-				bc.postMessage('active'); // Notify other tabs that this tab is active
+				isLastActiveTab.set(true);
+				bc.postMessage('active');
 			}
 		};
 
@@ -546,8 +533,6 @@
 		} catch (error) {
 			console.error('Error loading backend config:', error);
 		}
-		// Initialize i18n even if we didn't get a backend config,
-		// so `/error` can show something that's not `undefined`.
 
 		initI18n(localStorage?.locale);
 		if (!localStorage.locale) {
@@ -580,10 +565,6 @@
 					});
 
 					if (sessionUser) {
-						// Save Session User to Store
-						// $socket.emit('user-join', { auth: { token: sessionUser.token } });
-						// await user.set(sessionUser);
-						// await config.set(await getBackendConfig());
 						$socket.emit('user-join', { auth: { token: sessionUser.token } });
 						await user.set(sessionUser);
 						await config.set(await getBackendConfig());
@@ -593,12 +574,8 @@
 						await goto(`/auth?redirect=${encodedUrl}`);
 					}
 				} else {
-					// Don't redirect if we're already on the auth page
-					// Needed because we pass in tokens from OAuth logins via URL fragments
-					// if ($page.url.pathname !== '/auth') {
-					// 	await goto(`/auth?redirect=${encodedUrl}`);
 
-					const publicPaths = ['/auth', '/auth/reset-password', '/auth/reset-password/confirm'];
+					const publicPaths = ['/auth', '/auth/reset-password', '/auth/reset-password/confirm', '/auth/verify-pending'];
 					const isPublicPath = publicPaths.some(path => $page.url.pathname.startsWith(path));
 					
 					if (!isPublicPath) {
@@ -653,10 +630,6 @@
 	<title>{$WEBUI_NAME}</title>
 	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
 
-	<!-- rosepine themes have been disabled as it's not up to date with our latest version. -->
-	<!-- feel free to make a PR to fix if anyone wants to see it return -->
-	<!-- <link rel="stylesheet" type="text/css" href="/themes/rosepine.css" />
-	<link rel="stylesheet" type="text/css" href="/themes/rosepine-dawn.css" /> -->
 </svelte:head>
 
 {#if loaded}
