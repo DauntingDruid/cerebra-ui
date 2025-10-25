@@ -6,7 +6,7 @@ After following these steps, users will have a **CAPTCHA** on the Sign-In page a
 ## Overview
 
 CerebraUI uses **Cloudflare Turnstile** to verify that a human is signing in.  
-The Turnstile widget appears on the Sign-In page, and the backend validates each token using your **Turnstile secret key**.
+The Turnstile widget appears on the Sign-In page and the backend validates each token using your **Turnstile secret key**.
 
 ---
 
@@ -57,7 +57,7 @@ TURNSTILE_SECRET_KEY=
 
 ## Step 3: Step 5: Run the System Locally
 
-Once user has added your .env file with the Cloudflare keys:
+Once user has added the .env file with the Cloudflare keys:
 
 ```bash
 # Install dependencies
@@ -69,6 +69,6 @@ npm install
 NODE_OPTIONS=--max-old-space-size=4096 npm run build && OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --build --force-recreate
 ```
 
-User should now see the Cloudflare Turnstile CAPTCHA on your Sign-In page.
+User should now see the Cloudflare Turnstile CAPTCHA on the Sign-In page.
 
 ---
