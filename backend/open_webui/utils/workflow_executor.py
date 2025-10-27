@@ -90,8 +90,10 @@ class WorkflowExecutor:
 
             headers = {"Content-Type": "application/json"}
             # Authorization is optional (depends on LangFlow config)
+            # if api_key:
+            #     headers["Authorization"] = f"Bearer {api_key}"
             if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
+                headers["x-api-key"] = api_key
 
             payload = {
                 "input_value": input_data.get("message", ""),

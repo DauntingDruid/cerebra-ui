@@ -1497,9 +1497,13 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 		if (selectedWorkflowIds.length > 0) {
 			for (const workflowId of selectedWorkflowIds) {
 				await executeWorkflow(workflowId, userPrompt, $chatId);
-	}
-}
+			}
+			// When workflow is active, SKIP the model entirely
+			console.log('Workflow executed - skipping model');
+			return; // Don't call sendPrompt!
+		}
 
+		// Only send to model if NO workflow is selected
 		await sendPrompt(history, userPrompt, userMessageId, { newChat: true });
 	};
 
