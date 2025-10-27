@@ -2278,7 +2278,7 @@ IMAGE_GENERATION_ENGINE = PersistentConfig(
 ENABLE_IMAGE_GENERATION = PersistentConfig(
     "ENABLE_IMAGE_GENERATION",
     "image_generation.enable",
-    os.environ.get("ENABLE_IMAGE_GENERATION", "").lower() == "true",
+    os.environ.get("ENABLE_IMAGE_GENERATION", "true").lower() == "true",
 )
 
 ENABLE_IMAGE_PROMPT_GENERATION = PersistentConfig(
