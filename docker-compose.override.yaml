@@ -31,11 +31,25 @@ services:
   langflow:
     image: langflowai/langflow:latest
     ports:
-      - "7860:7860"     # exposes UI at http://localhost:7860
+      - "7860:7860"
     environment:
       - LANGFLOW_DATABASE_URL=sqlite:///langflow.db
+      - LANGFLOW_SECRET_KEY=MpuIqzf51LX7KLyjAU-2GCO1CPkVWOI0BrJnZisOgTI=
+      - LANGFLOW_AUTO_LOGIN=true
+      - LANGFLOW_SKIP_AUTH_AUTO_LOGIN=true
     volumes:
       - langflow-data:/app/langflow
+    networks:
+      - default
+      - cerebra_net
+  deep-research:
+    build:
+      context: ../open_deep_research
+      dockerfile: Dockerfile
+    ports:
+      - "2024:2024"
+    env_file:
+      - ../open_deep_research/.env
     networks:
       - default
       - cerebra_net

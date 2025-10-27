@@ -98,6 +98,7 @@ class WorkflowExecutor:
                 "output_type": "chat",
                 "input_type": "chat",
                 "tweaks": input_data.get("tweaks", {}),
+                
             }
             # allow client to pass session_id for conversation threads
             if "session_id" in input_data:
@@ -207,6 +208,14 @@ class WorkflowExecutor:
             url = _normalize_base_url(endpoint_url)
             if not url:
                 raise ValueError("Custom endpoint_url is required")
+            # Detect Deep Research and route to proper executor
+            if "deep-research" in url or ":2024" in url:
+                return await WorkflowExecutor.execute_deep_research(
+                    endpoint_url=endpoint_url,
+                    api_key=api_key,
+                    input_data=input_data,
+                    timeout=timeout
+                )
 
             request_headers = dict(headers or {})
             request_headers["Content-Type"] = "application/json"
@@ -290,7 +299,165 @@ class WorkflowExecutor:
             "message": "LangChain dry-run"
         }
 
+    # -----------------------
+    # Deep Research (LangGraph)
+    # -----------------------
+    @staticmethod
+    async def execute_deep_research(
+        endpoint_url: str,
+        api_key: Optional[str],
+        input_data: Dict[str, Any],
+        timeout: int = 300
+    ) -> Dict[str, Any]:
+        """
+        Execute Deep Research (LangGraph) workflow
+        Reuses thread_id from session_id (same pattern as Langflow)
+        """
+        try:
+            log.info(f"Deep Research input_data: {input_data}")
+            base = _normalize_base_url(endpoint_url)
+            if not base:
+                raise ValueError("Deep Research endpoint_url is required")
 
+            headers = {"Content-Type": "application/json"}
+            timeout_config = aiohttp.ClientTimeout(total=timeout)
+
+            async with aiohttp.ClientSession(timeout=timeout_config) as session:
+                # Step 1: Create assistant with proper config
+                assistant_data = {
+                    "graph_id": "Deep Researcher",
+                    "name": "Research Assistant",
+                    "if_exists": "do_nothing",
+                    "config": {
+                        "configurable": {
+                            "summarization_model": "openai:gpt-4o-mini",
+                            "research_model": "openai:gpt-4o",
+                            "compression_model": "openai:gpt-4o",
+                            "final_report_model": "openai:gpt-4o"
+                        }
+                    }
+                }
+                
+                async with session.post(
+                    f"{base}/assistants",
+                    json=assistant_data,
+                    headers=headers
+                ) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        log.error(f"Assistant creation failed: {error_text}")
+                    assistant = await resp.json()
+                    assistant_id = assistant.get("assistant_id")
+                    log.info(f"Created assistant: {assistant_id}")
+
+                # Step 2: Get or create thread (using session_id like Langflow)
+                thread_id = input_data.get("session_id") or input_data.get("thread_id")
+                
+                if not thread_id:
+                    # Create new thread only if no session_id provided
+                    async with session.post(
+                        f"{base}/threads",
+                        json={},
+                        headers=headers
+                    ) as resp:
+                        if resp.status >= 400:
+                            error_text = await resp.text()
+                            raise Exception(f"Failed to create thread: {error_text}")
+                        thread = await resp.json()
+                        thread_id = thread.get("thread_id")
+                        log.info(f"Created NEW thread: {thread_id}")
+                else:
+                    log.info(f"Reusing existing thread: {thread_id}")
+
+                # Step 3: Run research
+                run_data = {
+                    "assistant_id": assistant_id,
+                    "input": {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": input_data.get("message", "")
+                            }
+                        ]
+                    },
+                    "stream_mode": "values"
+                }
+                
+                log.info(f"Starting research run for thread: {thread_id}")
+                
+                async with session.post(
+                    f"{base}/threads/{thread_id}/runs/wait",
+                    json=run_data,
+                    headers=headers
+                ) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        raise Exception(f"Research run failed: {error_text}")
+                    
+                    result = await resp.json()
+                    log.info(f"Research result type: {type(result)}")
+                    
+                    output_text = "Research completed"
+                    
+                    # Handle DICT response
+                    if isinstance(result, dict):
+                        log.info(f"Result keys: {list(result.keys())}")
+                        
+                        if "output" in result:
+                            output_text = result["output"]
+                        elif "text" in result:
+                            output_text = result["text"]
+                        elif "content" in result:
+                            output_text = result["content"]
+                        elif "messages" in result:
+                            messages = result["messages"]
+                            if isinstance(messages, list) and len(messages) > 0:
+                                last_msg = messages[-1]
+                                if isinstance(last_msg, dict):
+                                    output_text = last_msg.get("content", output_text)
+                        elif "values" in result:
+                            values = result["values"]
+                            if isinstance(values, dict) and "messages" in values:
+                                messages = values["messages"]
+                                if isinstance(messages, list) and len(messages) > 0:
+                                    output_text = messages[-1].get("content", output_text)
+                        
+                        log.info(f"Extracted text length: {len(output_text)}")
+                    
+                    # Handle LIST response
+                    elif isinstance(result, list) and len(result) > 0:
+                        last_state = result[-1]
+                        if isinstance(last_state, dict) and "messages" in last_state:
+                            messages = last_state["messages"]
+                            if isinstance(messages, list) and len(messages) > 0:
+                                last_message = messages[-1]
+                                if isinstance(last_message, dict):
+                                    output_text = last_message.get("content", output_text)
+                    
+                    return {
+                        "success": True,
+                        "output": {
+                            "outputs": [
+                                {
+                                    "text": output_text
+                                }
+                            ]
+                        },
+                        "session_id": thread_id,  # Return thread_id as session_id for next call
+                        "message": "Deep Research completed"
+                    }
+
+        except asyncio.TimeoutError:
+            return {
+                "success": False,
+                "error": f"Deep Research timed out after {timeout}s"
+            }
+        except Exception as e:
+            log.error(f"Deep Research error: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 # -----------------------
 # Dispatcher
 # -----------------------
@@ -328,6 +495,14 @@ async def execute_workflow(
             api_key=api_key,
             input_data=input_data,
             config=config
+        )
+    
+    elif workflow_type == "deep_research":
+        return await executor.execute_deep_research(
+            endpoint_url=config.get("endpoint_url"),
+            api_key=api_key,
+            input_data=input_data,
+            timeout=config.get("timeout", 300)
         )
 
     elif workflow_type == "custom":

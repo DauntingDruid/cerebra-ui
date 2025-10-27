@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import List, Optional, Dict, Any
 import asyncio
 import logging
+import json
 from urllib.parse import urlparse, urlunparse
 
 from open_webui.models.workflows import (
@@ -269,6 +270,34 @@ async def execute_workflow_endpoint(
 
     input_data = body.get("input_data") or {"message": ""}
 
+    # ============================================================
+    # ADD SESSION_ID FOR DEEP_RESEARCH (THREAD CONTINUITY)
+    # ============================================================
+    service_name = _norm(workflow.workflow_type)
+    
+    if service_name == "deep_research" and body.get("chat_id"):
+        # Get the last successful execution for this workflow + chat
+        last_execution = WorkflowExecutions.get_last_completed_execution(
+            workflow_id=workflow_id,
+            chat_id=body.get("chat_id")
+        )
+        
+        # Extract session_id from previous execution's output
+        if last_execution and last_execution.output_data:
+            try:
+                if isinstance(last_execution.output_data, str):
+                    output = json.loads(last_execution.output_data)
+                else:
+                    output = last_execution.output_data
+                
+                session_id = output.get("session_id")
+                if session_id:
+                    input_data["session_id"] = session_id
+                    log.info(f"✅ Reusing session_id for deep_research: {session_id}")
+            except Exception as e:
+                log.error(f"Failed to parse previous execution output: {e}")
+    # ============================================================
+
     # Create execution record
     form = WorkflowExecutionForm(
         workflow_id=workflow_id,
@@ -285,7 +314,6 @@ async def execute_workflow_endpoint(
         )
 
     # Fetch credential (service_name is the workflow_type)
-    service_name = _norm(workflow.workflow_type)
     credential = WorkflowCredentials.get_credential_by_service(user.id, service_name)
 
     # Build config dict & fix endpoint for container

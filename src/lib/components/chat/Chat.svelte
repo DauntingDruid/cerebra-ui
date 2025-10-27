@@ -121,17 +121,142 @@
 	$: selectedModelIds = atSelectedModel !== undefined ? [atSelectedModel.id] : selectedModels;
 
 	let selectedToolIds = [];
-	let selectedWorkflowIds = [];
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
 	let deepResearchEnabled = false;
 	let codeInterpreterEnabled = false;
-	let selectedWorkflowId = null;
+	let selectedWorkflowIds: string[] = [];
 
-	// Deep Research is now directly bound to MessageInput, no need for reactive conversion
+	const executeWorkflow = async (workflowId: string, message: string, chatId: string) => {
+	try {
+		const res = await fetch(`/api/v1/workflows/${workflowId}/execute`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			credentials: 'include',
+			body: JSON.stringify({
+				input_data: { message },
+				chat_id: chatId
+			})
+		});
+
+		if (!res.ok) {
+			throw new Error(`Workflow execution failed: ${res.statusText}`);
+		}
+
+		const result = await res.json();
+		toast.success(`Workflow started: ${result.id}`);
+		
+		// Poll for results
+		pollWorkflowResult(result.id, chatId);
+	} catch (error) {
+		console.error('Workflow execution error:', error);
+		toast.error(`Workflow failed: ${error.message}`);
+	}
+};
+
+const pollWorkflowResult = async (executionId: string, chatId: string) => {
+	let attempts = 0;
+	const maxAttempts = 1800; // 30 seconds max
+	
+	const interval = setInterval(async () => {
+		attempts++;
+		
+		try {
+			const res = await fetch(`/api/v1/workflows/executions/${executionId}`, {
+				credentials: 'include'
+			});
+			
+			if (res.ok) {
+				const execution = await res.json();
+				
+				if (execution.status === 'completed') {
+					clearInterval(interval);
+					
+					// Add workflow result as a system message
+					
+					// Extract text from Langflow output
+					let workflowContent = '**Workflow Result:**\n';
+
+					if (execution.output_data?.outputs) {
+						const outputs = execution.output_data.outputs;
+						
+						if (Array.isArray(outputs) && outputs.length > 0) {
+							const firstOutput = outputs[0];
+							
+							// Check for text in common Langflow output structures
+							if (firstOutput.outputs?.[0]?.results?.message?.text) {
+								workflowContent += firstOutput.outputs[0].results.message.text;
+							} else if (firstOutput.text) {
+								workflowContent += firstOutput.text;
+							} else {
+								// Fallback: show the full JSON
+								workflowContent += `\`\`\`json\n${JSON.stringify(execution.output_data, null, 2)}\n\`\`\``;
+							}
+						} else {
+							workflowContent += `\`\`\`json\n${JSON.stringify(execution.output_data, null, 2)}\n\`\`\``;
+						}
+					} else {
+						workflowContent += `\`\`\`json\n${JSON.stringify(execution.output_data, null, 2)}\n\`\`\``;
+					}
+					
+					// Add workflow result as a system message
+					const workflowMessageId = uuidv4();
+					const workflowMessage = {
+						id: workflowMessageId,
+						parentId: history.currentId,
+						childrenIds: [],
+						role: 'assistant',
+						content: workflowContent,
+						done: true,
+						model: 'workflow',
+						modelName: 'Langflow',
+						timestamp: Math.floor(Date.now() / 1000)
+					};
+					
+					history.messages[workflowMessageId] = workflowMessage;
+					if (history.currentId) {
+						history.messages[history.currentId].childrenIds.push(workflowMessageId);
+					}
+					history.currentId = workflowMessageId;
+					
+					await tick();
+					scrollToBottom();
+					await saveChatHandler(chatId, history);
+					
+					toast.success('Workflow completed!');
+				} else if (execution.status === 'failed') {
+					clearInterval(interval);
+					toast.error(`Workflow failed: ${execution.error_message}`);
+				}
+			}
+			
+			if (attempts >= maxAttempts) {
+				clearInterval(interval);
+				toast.error('Workflow execution timeout');
+			}
+		} catch (error) {
+			console.error('Error polling workflow:', error);
+		}
+	}, 1000);
+};
 
 	let chat = null;
 
+	// Deep Research配置函数
+	function getDeepResearchEnabled() {
+		try {
+			const saved = localStorage.getItem('deepResearchConfig');
+			if (saved) {
+				const config = JSON.parse(saved);
+				return config.ENABLE_DEEP_RESEARCH === true;
+			}
+		} catch (error) {
+			console.error('Error loading deep research config:', error);
+		}
+		return true; // 默认开启
+	}
 	let tags = [];
 
 	let history = {
@@ -155,9 +280,8 @@
 			prompt = '';
 			files = [];
 			selectedToolIds = [];
-			selectedWorkflowIds = [];
 			webSearchEnabled = false;
-			deepResearchEnabled = true; // Default to enabled like Web Search
+			deepResearchEnabled = false;
 			imageGenerationEnabled = false;
 
 			if (chatIdProp && (await loadChat())) {
@@ -171,17 +295,10 @@
 						prompt = input.prompt;
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
-						selectedWorkflowIds = input.selectedWorkflowIds || [];
 						webSearchEnabled = input.webSearchEnabled;
-						deepResearchEnabled = input.deepResearchEnabled || false;
-						// Handle legacy deepResearchEnabled from localStorage
-						if (input.deepResearchEnabled && !selectedWorkflowIds.includes('deep-research')) {
-							selectedWorkflowIds = [...selectedWorkflowIds, 'deep-research'];
-						}
+						deepResearchEnabled = input.deepResearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
-					} catch (e) {
-						// Keep default values if localStorage parsing fails
-					}
+					} catch (e) {}
 				}
 
 				window.setTimeout(() => scrollToBottom(), 0);
@@ -438,17 +555,15 @@
 				prompt = input.prompt;
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
-				selectedWorkflowIds = input.selectedWorkflowIds || [];
 				webSearchEnabled = input.webSearchEnabled;
-				deepResearchEnabled = input.deepResearchEnabled || false;
+				deepResearchEnabled = input.deepResearchEnabled;
 				imageGenerationEnabled = input.imageGenerationEnabled;
 			} catch (e) {
 				prompt = '';
 				files = [];
 				selectedToolIds = [];
-				selectedWorkflowIds = [];
 				webSearchEnabled = false;
-				deepResearchEnabled = true; // Default to enabled like Web Search
+				deepResearchEnabled = false;
 				imageGenerationEnabled = false;
 			}
 		}
@@ -1281,9 +1396,20 @@
 			toast.error($i18n.t('Please enter a prompt'));
 			return;
 		}
-		if (selectedModels.includes('')) {
+		/*if (selectedModels.includes('')) {
 			toast.error($i18n.t('Model not selected'));
 			return;
+		}*/
+
+		// Allow submission if workflow is selected, even without a model
+		if (selectedModels.includes('') && selectedWorkflowIds.length === 0) {
+    		toast.error($i18n.t('Model not selected'));
+    		return;
+		}
+
+	// If only workflow is selected, set a dummy model to bypass checks
+		if (selectedWorkflowIds.length > 0 && selectedModels.includes('')) {
+    		selectedModels = ['workflow-only'];
 		}
 
 		if (messages.length != 0 && messages.at(-1).done != true) {
@@ -1366,6 +1492,13 @@
 		chatInput?.focus();
 
 		saveSessionSelectedModels();
+		
+		// Execute workflow if selected (hybrid mode)
+		if (selectedWorkflowIds.length > 0) {
+			for (const workflowId of selectedWorkflowIds) {
+				await executeWorkflow(workflowId, userPrompt, $chatId);
+	}
+}
 
 		await sendPrompt(history, userPrompt, userMessageId, { newChat: true });
 	};
@@ -1407,7 +1540,6 @@
 					modelName: model.name ?? model.id,
 					modelIdx: modelIdx ? modelIdx : _modelIdx,
 					userContext: null,
-					deepResearchEnabled: deepResearchEnabled,
 					timestamp: Math.floor(Date.now() / 1000) // Unix epoch
 				};
 
@@ -1630,16 +1762,7 @@
 						($user?.role === 'admin' ||($user?.permissions?.features?.web_search ?? true))
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
 							: false,
-					// TODO: Uncomment backend config check when ready:
-					// deep_research: $config?.features?.enable_deep_research &&
-					// 	($user?.role === 'admin' || $user?.permissions?.features?.deep_research)
-					// 		? deepResearchEnabled
-					// 		: false
-					// For now, allow Deep Research by default:
-					deep_research: (() => {
-						console.log('Deep Research in API call:', { deepResearchEnabled, webSearchEnabled, imageGenerationEnabled });
-						return deepResearchEnabled;
-					})()
+					deep_research: getDeepResearchEnabled() ? deepResearchEnabled : false
 				},
 				variables: {
 					...getPromptVariables(
@@ -2049,7 +2172,6 @@
 									{chatActionHandler}
 									{addMessages}
 									bottomPadding={files.length > 0}
-									{deepResearchEnabled}
 								/>
 							</div>
 						</div>
@@ -2066,8 +2188,8 @@
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
-								bind:selectedWorkflowIds
 								bind:deepResearchEnabled
+								bind:selectedWorkflowIds
 								bind:atSelectedModel
 								toolServers={$toolServers}
 								transparentBackground={$settings?.backgroundImageUrl ?? false}
@@ -2118,7 +2240,6 @@
 								bind:prompt
 								bind:autoScroll
 								bind:selectedToolIds
-								bind:selectedWorkflowIds
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled

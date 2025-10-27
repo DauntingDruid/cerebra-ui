@@ -92,7 +92,7 @@ class WorkflowModel(BaseModel):
 class WorkflowForm(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    workflow_type: str = Field(..., pattern="^(langflow|n8n|langchain|custom)$")
+    workflow_type: str = Field(..., pattern="^(langflow|n8n|langchain|deep_research|custom)$")
     config: Dict[str, Any]
     is_active: bool = True
 
@@ -408,4 +408,30 @@ class WorkflowExecutions:
             return WorkflowExecutionModel.model_validate(WorkflowExecutions._exec_to_model_dict(e))
         except Exception as ex:
             print(f"Error getting execution: {ex}")
+            return None
+
+    @staticmethod
+    def get_last_completed_execution(workflow_id: str, chat_id: str) -> Optional[WorkflowExecutionModel]:
+        """
+        Get the most recent completed execution for a specific workflow and chat.
+        Used for session/thread continuity in deep_research workflows.
+        """
+        try:
+            e = (
+                Session.query(WorkflowExecution)
+                .filter(
+                    WorkflowExecution.workflow_id == workflow_id,
+                    WorkflowExecution.chat_id == chat_id,
+                    WorkflowExecution.status == "completed"
+                )
+                .order_by(WorkflowExecution.started_at.desc())
+                .first()
+            )
+            
+            if not e:
+                return None
+                
+            return WorkflowExecutionModel.model_validate(WorkflowExecutions._exec_to_model_dict(e))
+        except Exception as ex:
+            print(f"Error getting last completed execution: {ex}")
             return None
