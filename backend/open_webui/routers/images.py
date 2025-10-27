@@ -120,10 +120,10 @@ class GeminiConfigForm(BaseModel):
 ##############fal
 class FalConfigForm(BaseModel):
     FAL_API_KEY: str
-    FAL_API_BASE_URL: str
+    FAL_API_BASE_URL: Optional[str] = "https://fal.run"
     FAL_MODEL: str  # 🆕 NEW
     ENABLE_FAL_SMART_MODE: bool
-    FAL_OPENAI_API_KEY: str
+    FAL_OPENAI_API_KEY: Optional[str] = "" 
     FAL_DEFAULT_IMAGE_SIZE: str
     FAL_NUM_INFERENCE_STEPS: int
     FAL_GUIDANCE_SCALE: float

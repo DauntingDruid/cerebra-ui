@@ -2272,7 +2272,7 @@ FIRECRAWL_API_BASE_URL = PersistentConfig(
 IMAGE_GENERATION_ENGINE = PersistentConfig(
     "IMAGE_GENERATION_ENGINE",
     "image_generation.engine",
-    os.getenv("IMAGE_GENERATION_ENGINE", "openai"),
+    os.getenv("IMAGE_GENERATION_ENGINE", "fal"), ####fal
 )
 
 ENABLE_IMAGE_GENERATION = PersistentConfig(
@@ -2500,6 +2500,63 @@ IMAGE_GENERATION_MODEL = PersistentConfig(
     os.getenv("IMAGE_GENERATION_MODEL", ""),
 )
 
+####################
+# ==========================================
+# Fal Flux Image Generation
+# ==========================================
+
+FAL_API_KEY = PersistentConfig(
+    "FAL_API_KEY",
+    "image_generation.fal.api_key",
+    os.environ.get("FAL_API_KEY", "")
+)
+
+FAL_API_BASE_URL = PersistentConfig(
+    "FAL_API_BASE_URL",
+    "image_generation.fal.base_url",
+    "https://fal.run"
+)
+
+# 🆕 NEW: Model selection
+FAL_MODEL = PersistentConfig(
+    "FAL_MODEL",
+    "image_generation.fal.model",
+    os.environ.get("FAL_MODEL", "fal-ai/flux-pro/v1.1")
+)
+
+# Smart Multi-Round Feature (enabled by default)
+ENABLE_FAL_SMART_MODE = PersistentConfig(
+    "ENABLE_FAL_SMART_MODE",
+    "image_generation.fal.enable_smart",
+    True
+)
+
+# OpenAI key for prompt analysis
+FAL_OPENAI_API_KEY = PersistentConfig(
+    "FAL_OPENAI_API_KEY",
+    "image_generation.fal.openai_key",
+    os.environ.get("FAL_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+)
+
+FAL_DEFAULT_IMAGE_SIZE = PersistentConfig(
+    "FAL_DEFAULT_IMAGE_SIZE",
+    "image_generation.fal.default_size",
+    "landscape_4_3"
+)
+
+FAL_NUM_INFERENCE_STEPS = PersistentConfig(
+    "FAL_NUM_INFERENCE_STEPS",
+    "image_generation.fal.steps",
+    28
+)
+
+FAL_GUIDANCE_SCALE = PersistentConfig(
+    "FAL_GUIDANCE_SCALE",
+    "image_generation.fal.guidance",
+    3.5
+)
+#####################
+
 ####################################
 # Audio
 ####################################
@@ -2708,59 +2765,3 @@ LDAP_CIPHERS = PersistentConfig(
 )
 
 
-####################
-# ==========================================
-# Fal Flux Image Generation
-# ==========================================
-
-FAL_API_KEY = PersistentConfig(
-    "FAL_API_KEY",
-    "image_generation.fal.api_key",
-    os.environ.get("FAL_API_KEY", "")
-)
-
-FAL_API_BASE_URL = PersistentConfig(
-    "FAL_API_BASE_URL",
-    "image_generation.fal.base_url",
-    "https://fal.run"
-)
-
-# 🆕 NEW: Model selection
-FAL_MODEL = PersistentConfig(
-    "FAL_MODEL",
-    "image_generation.fal.model",
-    os.environ.get("FAL_MODEL", "fal-ai/flux-pro/v1.1")
-)
-
-# Smart Multi-Round Feature (enabled by default)
-ENABLE_FAL_SMART_MODE = PersistentConfig(
-    "ENABLE_FAL_SMART_MODE",
-    "image_generation.fal.enable_smart",
-    True
-)
-
-# OpenAI key for prompt analysis
-FAL_OPENAI_API_KEY = PersistentConfig(
-    "FAL_OPENAI_API_KEY",
-    "image_generation.fal.openai_key",
-    os.environ.get("OPENAI_API_KEY", "")
-)
-
-FAL_DEFAULT_IMAGE_SIZE = PersistentConfig(
-    "FAL_DEFAULT_IMAGE_SIZE",
-    "image_generation.fal.default_size",
-    "landscape_4_3"
-)
-
-FAL_NUM_INFERENCE_STEPS = PersistentConfig(
-    "FAL_NUM_INFERENCE_STEPS",
-    "image_generation.fal.steps",
-    28
-)
-
-FAL_GUIDANCE_SCALE = PersistentConfig(
-    "FAL_GUIDANCE_SCALE",
-    "image_generation.fal.guidance",
-    3.5
-)
-#####################
