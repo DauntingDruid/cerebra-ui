@@ -270,6 +270,9 @@
 										} else if (config.engine === 'gemini' && config.gemini.GEMINI_API_KEY === '') {
 											toast.error($i18n.t('Gemini API Key is required.'));
 											config.enabled = false;
+										} else if (config.engine === 'fal' && config.fal.FAL_API_KEY === '') {
+        									toast.error($i18n.t('Fal API Key is required.'));
+											config.enabled = false;
 										}
 									}
 
@@ -304,6 +307,8 @@
 							<option value="comfyui">{$i18n.t('ComfyUI')}</option>
 							<option value="automatic1111">{$i18n.t('Automatic1111')}</option>
 							<option value="gemini">{$i18n.t('Gemini')}</option>
+							<!-- 🆕 ADD THIS -->
+  							<option value="fal">{$i18n.t('Fal Flux')}</option>
 						</select>
 					</div>
 				</div>
@@ -633,6 +638,163 @@
 							/>
 						</div>
 					</div>
+				<!-- 🆕 FAL FLUX CONFIGURATION SECTION -->
+				{:else if config?.engine === 'fal'}
+				<!-- FAL FLUX CONFIGURATION -->
+				<div>
+					<div class=" mb-1.5 text-base font-medium">{$i18n.t('Fal Flux API Config')}</div>
+
+					<!-- API Key -->
+					<div class="flex gap-2 mb-3">
+					<SensitiveInput
+						placeholder={$i18n.t('API Key (fal_...)')}
+						bind:value={config.fal.FAL_API_KEY}
+						required
+					/>
+					</div>
+
+					<!-- Model Selection -->
+					<div class="mb-3">
+					<div class="mb-2 text-sm font-medium">{$i18n.t('Fal Model')}</div>
+					<select
+						class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+						bind:value={config.fal.FAL_MODEL}
+					>
+						<option value="fal-ai/flux-pro/v1.1">Flux Pro v1.1 (Recommended)</option>
+						<option value="fal-ai/flux-pro">Flux Pro</option>
+						<option value="fal-ai/flux/dev">Flux Dev</option>
+						<option value="fal-ai/flux/schnell">Flux Schnell (Fast)</option>
+					</select>
+					<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Flux Pro v1.1 offers the best quality. Schnell is faster but lower quality.')}
+					</div>
+					</div>
+
+					<!-- Default Image Size -->
+					<div class="mb-3">
+					<div class="mb-2 text-sm font-medium">{$i18n.t('Default Image Size')}</div>
+					<select
+						class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+						bind:value={config.fal.FAL_DEFAULT_IMAGE_SIZE}
+					>
+						<option value="square_hd">Square HD (1024x1024)</option>
+						<option value="square">Square (512x512)</option>
+						<option value="portrait_4_3">Portrait 4:3 (768x1024)</option>
+						<option value="portrait_16_9">Portrait 16:9 (576x1024)</option>
+						<option value="landscape_4_3">Landscape 4:3 (1024x768)</option>
+						<option value="landscape_16_9">Landscape 16:9 (1024x576)</option>
+					</select>
+					<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Smart Mode may override this based on prompt analysis.')}
+					</div>
+					</div>
+
+					<!-- Advanced Settings -->
+					<details class="mb-3">
+					<summary class="cursor-pointer text-sm font-medium mb-2 select-none">
+						{$i18n.t('Advanced Settings')}
+					</summary>
+					
+					<div class="mt-2 space-y-3 pl-2">
+						<!-- Inference Steps -->
+						<div>
+						<div class="mb-1 text-sm">{$i18n.t('Inference Steps')}</div>
+						<input
+							type="number"
+							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+							placeholder="28"
+							min="1"
+							max="50"
+							bind:value={config.fal.FAL_NUM_INFERENCE_STEPS}
+						/>
+						<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+							{$i18n.t('Default: 28. Higher = better quality but slower.')}
+						</div>
+						</div>
+
+						<!-- Guidance Scale -->
+						<div>
+						<div class="mb-1 text-sm">{$i18n.t('Guidance Scale')}</div>
+						<input
+							type="number"
+							step="0.1"
+							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+							placeholder="3.5"
+							min="1.0"
+							max="20.0"
+							bind:value={config.fal.FAL_GUIDANCE_SCALE}
+						/>
+						<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+							{$i18n.t('Default: 3.5. Lower = more creative, Higher = more prompt adherence.')}
+						</div>
+						</div>
+					</div>
+					</details>
+
+					<!-- SMART MODE SECTION -->
+					<hr class="my-3 border-gray-100 dark:border-gray-850" />
+					
+					<div class="py-2">
+					<div class="flex justify-between items-start mb-2">
+						<div class="flex-1">
+						<div class="text-base font-medium mb-1 flex items-center gap-2">
+							{$i18n.t('Smart Multi-Round Mode')}
+							<span class="text-xs px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full font-medium">
+							NEW
+							</span>
+						</div>
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('Automatically detects text-to-image vs image-to-image based on conversation history. Enables iterative image refinement.')}
+						</div>
+						</div>
+						<Switch bind:state={config.fal.ENABLE_FAL_SMART_MODE} />
+					</div>
+
+					{#if config.fal.ENABLE_FAL_SMART_MODE}
+						<div class="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+						<div class="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">
+							✨ {$i18n.t('Smart Mode Features')}
+						</div>
+						<ul class="text-xs text-blue-600 dark:text-blue-400 space-y-1.5">
+							<li class="flex items-start gap-2">
+							<span class="text-blue-500 mt-0.5">•</span>
+							<span>{$i18n.t('Automatic mode detection (text2img → img2img)')}</span>
+							</li>
+							<li class="flex items-start gap-2">
+							<span class="text-blue-500 mt-0.5">•</span>
+							<span>{$i18n.t('Intelligent size suggestion (portrait/landscape/square)')}</span>
+							</li>
+							<li class="flex items-start gap-2">
+							<span class="text-blue-500 mt-0.5">•</span>
+							<span>{$i18n.t('Session tracking for multi-round refinement')}</span>
+							</li>
+							<li class="flex items-start gap-2">
+							<span class="text-blue-500 mt-0.5">•</span>
+							<span>{$i18n.t('Bilingual prompt analysis (English/Chinese)')}</span>
+							</li>
+						</ul>
+						</div>
+
+						<!-- OpenAI API Key (Optional) -->
+						<div class="mt-3">
+						<div class="mb-1.5 text-sm font-medium flex items-center gap-2">
+							{$i18n.t('OpenAI API Key')}
+							<span class="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded font-normal">
+							Optional
+							</span>
+						</div>
+						<SensitiveInput
+							placeholder={$i18n.t('sk-proj-...')}
+							bind:value={config.fal.FAL_OPENAI_API_KEY}
+							required={false}
+						/>
+						<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+							{$i18n.t('For enhanced prompt analysis with GPT-4o-mini. Falls back to rule-based engine if not provided.')}
+						</div>
+						</div>
+					{/if}
+					</div>
+				</div>
 				{/if}
 			</div>
 

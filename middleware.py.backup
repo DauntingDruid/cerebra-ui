@@ -90,7 +90,6 @@ from open_webui.env import (
     ENABLE_REALTIME_CHAT_SAVE,
 )
 from open_webui.constants import TASKS
-from open_webui.utils.chat_cache import delete_chat_cache, set_cached_chat
 
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
@@ -603,143 +602,37 @@ async def chat_image_generation_handler(
 
     system_message_content = ""
 
-    #####insert
-    # Get configuration for Smart Mode decision
-    chat_id = form_data.get("chat_id")
-    if not chat_id:
-        # Fallback: get from metadata (most reliable)
-        chat_id = extra_params.get("__metadata__", {}).get("chat_id")
-    engine = request.app.state.config.IMAGE_GENERATION_ENGINE
-    enable_smart = bool(request.app.state.config.ENABLE_FAL_SMART_MODE)
-    ##########
-
     try:
-        # Decision: Smart API or Traditional?
-        if engine == "fal" and enable_smart and chat_id:
-            # ===== SMART MODE PATH =====
-            log.info(f"[SmartGen] Using Smart Mode for chat {chat_id}")
-            
-            # TODO: Smart Mode implementation (Part 3)
-            # Update status with analysis message
-            await __event_emitter__({
-                "type": "status",
-                "data": {
-                    "description": "🧠 Analyzing prompt and generating image...",
-                    "done": False
-                }
-            })
-            
-            # Import Smart API components
-            from open_webui.routers.images import (
-                smart_image_generation,
-                SmartGenerateImageForm
-            )
-            
-            # Set OpenAI key for analyzer if configured
-            if request.app.state.config.FAL_OPENAI_API_KEY:
-                import os
-                os.environ["OPENAI_API_KEY"] = request.app.state.config.FAL_OPENAI_API_KEY
-            
-            # Call Smart API
-            smart_result = await smart_image_generation(
-                request=request,
-                form_data=SmartGenerateImageForm(
-                    chat_id=chat_id,
-                    prompt=prompt,
-                    image_size=request.app.state.config.FAL_DEFAULT_IMAGE_SIZE,
-                    num_inference_steps=request.app.state.config.FAL_NUM_INFERENCE_STEPS,
-                    guidance_scale=request.app.state.config.FAL_GUIDANCE_SCALE
-                ),
-                user=user
-            )
-            
-            # Convert Smart API response to middleware format
-            images = [{"url": smart_result["url"]}]
-            
-            # Generate enhanced status message with mode info
-            mode_emoji = "🎨" if smart_result["mode"] == "text2img" else "✨"
-            mode_desc = "text-to-image" if smart_result["mode"] == "text2img" else "image-to-image"
-            
-            await __event_emitter__({
-                "type": "status",
-                "data": {
-                    "description": f"{mode_emoji} Generated using {mode_desc}",
-                    "done": True
-                }
-            })
-            
-            await __event_emitter__({
-                "type": "files",
-                "data": {
-                    "files": [{"type": "image", "url": smart_result["url"]}]
-                }
-            })
-            
-            system_message_content = "<context>User is shown the generated image, tell the user that the image has been generated</context>"
-            
-            log.info(f"[SmartGen] Success: mode={smart_result['mode']} session={smart_result['session_id']}")
-            
-        else:
-            # ===== TRADITIONAL PATH =====
-            if engine == "fal" and not enable_smart:
-                log.info("[FalFlux] Using basic mode (Smart disabled)")
-            elif engine == "fal" and not chat_id:
-                log.warning("[FalFlux] No chat_id, using basic mode")
+        images = await image_generations(
+            request=request,
+            form_data=GenerateImageForm(**{"prompt": prompt}),
+            user=user,
+        )
 
-            ################            
-            images = await image_generations(
-                request=request,
-                form_data=GenerateImageForm(**{"prompt": prompt}),
-                user=user,
-            )
-
-            await __event_emitter__(
-                {
-                    "type": "status",
-                    "data": {"description": "Generated an image", "done": True},
-                }
-            )
-
-            await __event_emitter__(
-                {
-                    "type": "files",
-                    "data": {
-                        "files": [
-                            {
-                                "type": "image",
-                                "url": image["url"],
-                            }
-                            for image in images
-                        ]
-                    },
-                }
-            )
-
-            system_message_content = "<context>User is shown the generated image, tell the user that the image has been generated</context>"
-
-    except HTTPException as e:
-        # Smart Mode specific error (preserves HTTP status codes)
-        log.exception(e)
-        
-        error_detail = e.detail if isinstance(e.detail, str) else e.detail.get("message", str(e.detail))
-        
         await __event_emitter__(
             {
                 "type": "status",
-                "data": {
-                    "description": f"❌ Image generation failed: {error_detail}",
-                    "done": True
-                }
+                "data": {"description": "Generated an image", "done": True},
             }
         )
-        
-        system_message_content = "<context>Unable to generate an image, tell the user that an error occurred</context>"
-        
-        # Re-raise to preserve error information
-        raise
-    
+
+        await __event_emitter__(
+            {
+                "type": "files",
+                "data": {
+                    "files": [
+                        {
+                            "type": "image",
+                            "url": image["url"],
+                        }
+                        for image in images
+                    ]
+                },
+            }
+        )
+
+        system_message_content = "<context>User is shown the generated image, tell the user that the image has been generated</context>"
     except Exception as e:
-        # General error handling (keeps original behavior)
         log.exception(e)
         await __event_emitter__(
             {
@@ -1995,20 +1888,6 @@ async def process_chat_response(
                                                     ),
                                                 },
                                             )
-                                            try:
-                                                # Invalidate then set updated cache snapshot
-                                                delete_chat_cache(request.app, metadata["chat_id"])
-                                                chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
-                                                if chat:
-                                                    from open_webui.models.chats import ChatResponse
-
-                                                    set_cached_chat(
-                                                        request.app,
-                                                        metadata["chat_id"],
-                                                        ChatResponse(**chat.model_dump()).model_dump(),
-                                                    )
-                                            except Exception:
-                                                pass
                                         else:
                                             data = {
                                                 "content": serialize_content_blocks(
@@ -2412,19 +2291,6 @@ async def process_chat_response(
                             "content": serialize_content_blocks(content_blocks),
                         },
                     )
-                    try:
-                        delete_chat_cache(request.app, metadata["chat_id"])
-                        chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
-                        if chat:
-                            from open_webui.models.chats import ChatResponse
-
-                            set_cached_chat(
-                                request.app,
-                                metadata["chat_id"],
-                                ChatResponse(**chat.model_dump()).model_dump(),
-                            )
-                    except Exception:
-                        pass
 
                 # Send a webhook notification if the user is not active
                 if get_active_status_by_user_id(user.id) is None:
@@ -2463,19 +2329,6 @@ async def process_chat_response(
                             "content": serialize_content_blocks(content_blocks),
                         },
                     )
-                    try:
-                        delete_chat_cache(request.app, metadata["chat_id"])
-                        chat = Chats.get_chat_by_id(metadata["chat_id"])  # latest
-                        if chat:
-                            from open_webui.models.chats import ChatResponse
-
-                            set_cached_chat(
-                                request.app,
-                                metadata["chat_id"],
-                                ChatResponse(**chat.model_dump()).model_dump(),
-                            )
-                    except Exception:
-                        pass
 
             if response.background is not None:
                 await response.background()
