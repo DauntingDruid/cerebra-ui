@@ -304,7 +304,7 @@ class AppConfig:
         return self._state[key].value
 
 ####################################
-# Chat Cache (Redis)
+# Chat Cache (Redis) : this is the cache for the chat history (when user closes the browser, the chat history is still there)
 ####################################
 
 ENABLE_CHAT_CACHE = PersistentConfig(
