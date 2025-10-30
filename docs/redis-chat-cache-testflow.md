@@ -95,3 +95,48 @@ docker logs -n 400 open-webui | grep -E "/api/v1/chats/$CHAT_ID|ERROR|Traceback"
 If the recent list is empty, make sure you actually opened each chat page at least once in the browser.
 
 
+
+## 9) Scripted cold vs warm benchmark (local)
+
+Use the helper script to measure cold vs warm loads and print a verdict.
+
+```bash
+# 0) Ensure Redis + WebUI are running (you can skip Ollama):
+OPEN_WEBUI_PORT=3000 docker compose -f docker-compose.yaml -f docker-compose.override.yaml up -d --no-deps redis open-webui
+
+# 1) Open a chat in the UI twice and copy its CHAT_ID from the URL (/c/<CHAT_ID>)
+#    Optionally get USER_ID from Redis recent key
+docker exec -it redis redis-cli KEYS 'open-webui:chat-cache:recent:*'
+
+# 2) Set env vars (paste your cookie token from the browser go to DevTools → Application → Cookies → token → copy value )
+export WEBUI_TOKEN='<your_token>'
+export CHAT_ID=<your_chat_id>
+export USER_ID=<your_user_id>
+
+export CHAT_ID=956943b6-0d59-461f-840a-942d3030c020
+export USER_ID=ed449712-a886-44c2-bcc9-925f3f126614
+export WEBUI_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImVkNDQ5NzEyLWE4ODYtNDRjMi1iY2M5LTkyNWYzZjEyNjYxNCJ9.R8-IBOk14SrIGAI-oOEGvueq5CTv4RNyo-McA_9C8Tk'
+
+# 3) Run the bench (clears this chat’s snapshot, then does cold+warm GET)
+python3 test/chat_cache_bench.py \
+  --chat-id "$CHAT_ID" \
+  --token "$WEBUI_TOKEN" \
+  --clear-redis \
+  --user-id "$USER_ID" \
+  --show-keys
+
+# Example output
+# COLD  status=200 header=0s measured=0.160s
+# WARM  status=200 header=0s measured=0.018s
+# KEYS:
+# open-webui:chat-cache:recent:<USER_ID>
+# open-webui:chat-cache:item:<CHAT_ID>
+# TTL item:<CHAT_ID>: 900
+# Verdict: cache_warm_faster by x9.23
+```
+
+Notes:
+- If the `X-Process-Time` header shows `0s` (integer rounding), use the measured times.
+- 401 Unauthorized → set a valid `WEBUI_TOKEN` (browser cookie `token`).
+- If keys don’t appear, open the chat page once in the browser to warm the cache first.
+
