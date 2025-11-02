@@ -6,6 +6,10 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, time, timedelta
+from urllib.parse import urlparse
+from bs4 import BeautifulSoup
+from dateutil import parser as dateparser
+from typing import Any, Dict
 from typing import (
     Any,
     AsyncIterator,
@@ -37,6 +41,12 @@ from open_webui.config import (
     TAVILY_EXTRACT_DEPTH,
 )
 from open_webui.env import SRC_LOG_LEVELS
+
+import os
+from inspect import signature
+from fastapi import Request
+from crawl4ai.async_configs import CrawlerRunConfig 
+
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["RAG"])
@@ -634,3 +644,308 @@ def get_web_loader(
             f"Invalid WEB_LOADER_ENGINE: {WEB_LOADER_ENGINE.value}. "
             "Please set it to 'safe_web', 'playwright', 'firecrawl', or 'tavily'."
         )
+
+
+def _best_main_block(soup):
+    cands = soup.select(
+        "article, main, [role=main], div[itemprop='articleBody'], "
+        "section[itemprop='articleBody'], .article, .Article, .story, .Story"
+    ) or [soup.body]
+    best = max(cands, key=lambda el: len(el.get_text(" ", strip=True)) if el else 0)
+    return best
+
+def _strip_nav_lines(md: str) -> str:
+    if not md:
+        return md
+    out = []
+    for ln in md.splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        low = s.lower()
+
+        if low.startswith("skip to main content"):
+            continue
+        if s.startswith("* ") and "](" in s: 
+            continue
+        if s.count("](") >= 2 and len(s) <= 200:
+            continue
+        if "Log in" in s or "Cancel" in s:
+            continue
+        out.append(ln)
+    return "\n".join(out)
+
+def rule_structured_from(res, url: str) -> dict:
+    from bs4 import BeautifulSoup
+    from urllib.parse import urlparse
+    import json, re
+    html = getattr(res, "html", "") or ""
+    raw_text = (getattr(res, "markdown", None) or getattr(res, "cleaned_text", None) or "") or ""
+    meta0 = getattr(res, "metadata", {}) or {}
+
+    title = meta0.get("title") or ""
+    author = None
+    published_at = None
+
+    main_text = raw_text
+    if html:
+        soup = BeautifulSoup(html, "html.parser")
+
+        for sel in [
+            "header","nav","footer","aside",".site-header",".header",".top-nav",
+            ".global-nav",".main-nav",".breadcrumbs",".breadcrumb",".share",".social",
+            ".subscribe",".newsletter",".promo",".cookie",".consent",".ad",".ads",
+            ".advertisement",".sponsored",".related",".recommend",".sidebar",
+            ".search",".menu",".skip-link"
+        ]:
+            for el in soup.select(sel):
+                el.decompose()
+        main = _best_main_block(soup)
+        if main:
+            main_text = main.get_text("\n", strip=True)
+        def pick_meta(*names):
+            for n in names:
+                tag = soup.find("meta", attrs={"property": n}) or soup.find("meta", attrs={"name": n})
+                if tag and tag.get("content"):
+                    return tag["content"]
+        title = title or pick_meta("og:title","twitter:title")
+        author = author or pick_meta("author","article:author","twitter:creator")
+        date_str = pick_meta("article:published_time","og:published_time","date","pubdate")
+
+        if not date_str:
+            for sc in soup.find_all("script", type="application/ld+json"):
+                try:
+                    data = json.loads(sc.string or "")
+                    if isinstance(data, dict):
+                        title = title or data.get("headline")
+                        date_str = date_str or data.get("datePublished") or data.get("dateModified")
+                        a = data.get("author")
+                        if isinstance(a, dict) and not author:
+                            author = a.get("name")
+                        break
+                except Exception:
+                    pass
+
+        if date_str:
+            try:
+                from dateutil import parser as dp
+                published_at = dp.parse(date_str).isoformat()
+            except Exception:
+                pass
+
+    main_text = _strip_nav_lines(main_text)
+
+    summary = ""
+    if main_text:
+        parts = re.split(r'(?<=[。！？.!?])\s+', main_text.strip())
+        summary = " ".join(parts[:3])[:400]
+
+    from urllib.parse import urlparse
+    return {
+        "title": title or url,
+        "published_at": published_at,
+        "author": author,
+        "source": urlparse(url).netloc,
+        "summary": summary or None,
+        "main_text": main_text or None,
+        "language": None,
+    }
+
+def non_llm_extraction_strategy():
+    try:
+        from crawl4ai.extraction_strategy import NoExtractionStrategy
+        return NoExtractionStrategy()
+    except Exception:
+        return None
+
+
+DEFAULT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title":        {"type": "string", "description": "Page/article title if available"},
+        "published_at": {"type": "string", "description": "Publication date/time in ISO-8601 if found"},
+        "author":       {"type": "string"},
+        "source":       {"type": "string", "description": "Domain or site name"},
+        "summary":      {"type": "string", "description": "Concise 3–5 sentence summary"},
+        "main_text":    {"type": "string", "description": "Clean main content/body text"},
+        "language":     {"type": "string"},
+        "top_quotes":   {"type": "array", "items": {"type": "string"}, "maxItems": 5}
+    },
+    "required": ["title", "summary"]
+}
+
+def _mk_run_cfg(**kwargs) -> CrawlerRunConfig:
+
+    try:
+        params = signature(CrawlerRunConfig).parameters
+        allowed = {k: v for k, v in kwargs.items() if k in params}
+        if not allowed:
+            log.warning("[crawl4ai] no matching args for CrawlerRunConfig, keys=%s", list(kwargs.keys()))
+        return CrawlerRunConfig(**allowed)
+    except Exception as ex:
+        log.error("[crawl4ai] building CrawlerRunConfig failed: %s", ex)
+        return CrawlerRunConfig()
+
+def _mk_extraction_strategy(schema: Dict[str, Any]):
+
+    try:
+        from crawl4ai.extraction_strategy import LLMExtractionStrategy, NoExtractionStrategy
+    except Exception as ex:
+        log.warning("[crawl4ai] extraction module not available: %s; will not pass extraction_strategy", ex)
+        return None 
+
+    model = os.getenv("CRAWL4AI_LLM_MODEL", "gpt-4o-mini")
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if api_key:
+        try:
+            return LLMExtractionStrategy(
+                model=model,
+                api_key=api_key,
+                schema=schema,
+                temperature=0,
+
+            )
+        except Exception as ex:
+            log.warning("[crawl4ai] LLMExtractionStrategy init failed, fallback to NoExtractionStrategy: %s", ex)
+
+
+    try:
+        return NoExtractionStrategy()
+    except Exception:
+        log.warning("[crawl4ai] NoExtractionStrategy not available; will not pass extraction_strategy")
+        return None
+
+
+def _pick_structured_payload(res) -> Dict[str, Any]:
+
+    for key in ("extracted_content", "extracted_data", "extraction", "structured_data", "json"):
+        data = getattr(res, key, None)
+        if isinstance(data, dict) and data:
+            return data
+
+    for key in ("markdown_json", "text_json"):
+        data = getattr(res, key, None)
+        if isinstance(data, dict) and data:
+            return data
+    return {}
+
+
+def _pick_text(res) -> str:
+
+    for key in ("markdown", "cleaned_text", "text", "html"):
+        v = getattr(res, key, None)
+        if isinstance(v, str) and v.strip():
+            return v
+    return ""
+
+async def _crawl4ai_fetch_docs(
+    request: Request,
+    urls: list[str],
+    *,
+    timeout_sec: float = 15.0,
+    concurrency: int = 3,
+    user_agent: str = "Open WebUI / Crawl4AI",
+    schema: Optional[Dict[str, Any]] = None,
+) -> list[Document]:
+
+    from crawl4ai import AsyncWebCrawler, BrowserConfig, CacheMode
+
+    cfg = getattr(request.app.state, "config", None)
+    if cfg:
+        concurrency = int(getattr(cfg, "WEB_SEARCH_CONCURRENT_REQUESTS", concurrency) or concurrency)
+
+        pw_ms = getattr(cfg, "PLAYWRIGHT_TIMEOUT", None)
+        if pw_ms:
+            try:
+                timeout_sec = max(timeout_sec, float(pw_ms) / 1000.0)
+            except Exception:
+                pass
+
+    urls = [u for u in dict.fromkeys(urls) if u]
+    if not urls:
+        return []
+
+    bcfg = BrowserConfig(
+        headless=True,
+        user_agent=user_agent,
+    )
+
+    strategy = _mk_extraction_strategy(schema or DEFAULT_SCHEMA)
+
+    kwargs = dict(
+        cache_mode=CacheMode.BYPASS,
+        js=True,
+        js_render=True,
+        js_timeout=10,
+        browser_type="chromium",
+        max_tasks=concurrency,
+        timeout=int(timeout_sec * 1000),
+        remove_overlay=True,
+    )
+    kwargs.update({
+        "remove_selectors": [
+            "header","nav","footer","aside",".site-header",".header",".top-nav",
+            ".global-nav",".main-nav",".breadcrumbs",".breadcrumb",".share",".social",
+            ".subscribe",".newsletter",".promo",".cookie",".consent",".ad",".ads",
+            ".advertisement",".sponsored",".related",".recommend",".sidebar",
+            ".search",".menu",".skip-link"
+        ],
+        "readability": True, 
+    })
+
+
+    if strategy is not None:
+        kwargs["extraction_strategy"] = strategy
+
+    run_cfg = _mk_run_cfg(**kwargs)
+
+    sem = asyncio.Semaphore(max(1, concurrency))
+    docs: list[Document] = []
+
+    loop = asyncio.get_running_loop()
+    t0 = loop.time()
+
+    async with AsyncWebCrawler(config=bcfg) as crawler:
+        async def _one(u: str):
+            async with sem:
+
+                start = loop.time()
+                log.info(f"[crawl4ai] start {u} | Concurrent crawling started")
+                try:
+                
+                    res = await crawler.arun(url=u, config=run_cfg)
+
+                    structured = _pick_structured_payload(res)
+
+                    if not structured:
+                        structured = rule_structured_from(res, u)
+
+                    page_text = (structured.get("main_text") or structured.get("summary") or "").strip()
+                    if not page_text:
+                        page_text = _pick_text(res)
+
+                    docs.append(Document(
+                        page_content=page_text,
+                        metadata={
+                            "source": u,
+                            "title": structured.get("title") or u,
+                            "loader": "crawl4ai",
+                            "structured": structured, 
+                        }
+                    ))
+
+                    # log.info(f"[crawl4ai] done {u} in {loop.time() - start:.2f}s | Time per page")
+
+                except Exception as ex:
+                    log.warning("[crawl4ai] failed: %s -> %s", u, ex)
+
+
+        await asyncio.gather(*[_one(u) for u in urls])
+
+    log.info(
+        f"[crawl4ai] fetched {len(urls)} urls in {loop.time() - t0:.2f}s (concurrency={concurrency}) | total time"
+    )
+
+    return docs

@@ -1,43 +1,109 @@
-import json
-import logging
-from typing import Optional
+import os, httpx
+from typing import List, Dict, Optional
+from .engine_template import template_paged_engine
+from open_webui.retrieval.web.main import SearchResult
 
-import requests
-from open_webui.retrieval.web.main import SearchResult, get_filtered_results
-from open_webui.env import SRC_LOG_LEVELS
+ENGINE_NAME = "serper"
+DEFAULT_ENDPOINT = os.getenv("SERPER_ENDPOINT", "https://google.serper.dev/search")
+DEFAULT_API_KEY  = os.getenv("SERPER_API_KEY") or os.getenv("SERPER_KEY")
 
-log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["RAG"])
+async def _fetch_page_impl(
+    client: httpx.AsyncClient,
+    q: str,
+    page: int,
+    page_size: int,
+    timeout: float,
+    *,
+    api_key: str,
+    endpoint: str,
+) -> List[Dict]:
+    if not api_key:
+        raise RuntimeError(f"[{ENGINE_NAME}] SERPER_API_KEY not set")
+
+    page = max(1, int(page))
+    num = max(1, min(int(page_size), 10))
+
+    headers = {
+        "X-API-KEY": api_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "OpenWebUI-Search/1.0",
+    }
+    payload = {
+        "q": q,
+        "page": page,
+        "num": num,
+    }
+
+    r = await client.post(endpoint, headers=headers, json=payload, timeout=timeout)
+
+    if r.status_code in (401, 403):
+        raise RuntimeError(f"[{ENGINE_NAME}] Unauthorized/Forbidden")
+    if r.status_code == 429:
+        raise RuntimeError(f"[{ENGINE_NAME}] Rate limited (429)")
+    r.raise_for_status()
+
+    data = r.json() or {}
+    items = data.get("organic") or []
+
+    try:
+        items = sorted(items, key=lambda x: x.get("position", 0))
+    except Exception:
+        pass
+    items = items[:num]
+
+    out: List[Dict] = []
+    for it in items:
+        url = (it.get("link") or "").strip()
+        if not url:
+            continue
+        out.append({
+            "title": it.get("title") or url,
+            "url": url,
+            "snippet": it.get("description") or "",
+            "source": ENGINE_NAME,
+        })
+    return out
 
 
-def search_serper(
-    api_key: str, query: str, count: int, filter_list: Optional[list[str]] = None
-) -> list[SearchResult]:
-    """Search using serper.dev's API and return the results as a list of SearchResult objects.
 
-    Args:
-        api_key (str): A serper.dev API key
-        query (str): The query to search for
-    """
-    url = "https://google.serper.dev/search"
+MAX_LIMIT = 100
+MAX_CONCURRENCY = 10
+DEFAULT_LIMIT = 30 
+DEFAULT_CONCURRENCY = 3 
 
-    payload = json.dumps({"q": query})
-    headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
+async def search_many_links(
+    q: str,
+    limit: int = DEFAULT_LIMIT,
+    timeout: float = 10.0,
+    page_size: int = 10,
+    max_page_concurrency: int = DEFAULT_CONCURRENCY,
+    filter_list: Optional[List[str]] = None,
+    *,
+    api_key: Optional[str] = None,  
+    endpoint: Optional[str] = None, 
+) -> List[SearchResult]:
 
-    response = requests.request("POST", url, headers=headers, data=payload)
-    response.raise_for_status()
+    limit = max(1, min(int(limit), MAX_LIMIT)) 
+    max_page_concurrency = max(1, min(int(max_page_concurrency), MAX_CONCURRENCY)) 
 
-    json_response = response.json()
-    results = sorted(
-        json_response.get("organic", []), key=lambda x: x.get("position", 0)
-    )
-    if filter_list:
-        results = get_filtered_results(results, filter_list)
-    return [
-        SearchResult(
-            link=result["link"],
-            title=result.get("title"),
-            snippet=result.get("description"),
+    ep  = (endpoint or DEFAULT_ENDPOINT).strip()
+    key = (api_key or DEFAULT_API_KEY or "").strip()
+
+    async def _fetch(client: httpx.AsyncClient, q_: str, page_: int, size_: int, t_: float):
+        return await _fetch_page_impl(
+            client, q_, page_, size_, t_,
+            api_key=key,
+            endpoint=ep,
         )
-        for result in results[:count]
-    ]
+
+    return await template_paged_engine(
+        q=q,
+        limit=limit,
+        page_size=page_size,
+        fetch_page_fn=_fetch, 
+        engine_name=ENGINE_NAME,
+        timeout=timeout,
+        max_page_concurrency=max_page_concurrency,
+        filter_list=filter_list,
+    )
