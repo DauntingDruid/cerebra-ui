@@ -985,9 +985,15 @@ app.include_router(audio.router, prefix="/api/v1/audio", tags=["audio"])
 app.include_router(retrieval.router, prefix="/api/v1/retrieval", tags=["retrieval"])
 
 app.include_router(configs.router, prefix="/api/v1/configs", tags=["configs"])
-app.include_router(betterauth_adapter.router)  # exposes /api/v1/auths/signin|signup|signout via BetterAuth
 
-# app.include_router(auths.router, prefix="/api/v1/auths", tags=["auths"])
+# Register auths.router FIRST to ensure GET /api/v1/auths/ endpoint is available
+# This endpoint is critical for session validation on page refresh
+app.include_router(auths.router, prefix="/api/v1/auths", tags=["auths"])
+
+# Register betterauth_adapter.router AFTER auths.router
+# betterauth_adapter handles signin/signup/signout endpoints
+# Note: both routers can coexist as they handle different endpoints
+app.include_router(betterauth_adapter.router)  # exposes /api/v1/auths/signin|signup|signout via BetterAuth
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 
 

@@ -86,7 +86,13 @@ class WorkflowExecutor:
             if not flow_id:
                 raise ValueError("LangFlow flow_id is required")
 
-            url = f"{base}/api/v1/run/{flow_id}"
+            # Check if base already contains /api/v1/run
+            if "/api/v1/run" in base:
+                # If it does, just append the flow_id
+                url = f"{base}/{flow_id}"
+            else:
+                # Otherwise, append the full path
+                url = f"{base}/api/v1/run/{flow_id}"
 
             headers = {"Content-Type": "application/json"}
             # Authorization is optional (depends on LangFlow config)
@@ -105,10 +111,12 @@ class WorkflowExecutor:
             # allow client to pass session_id for conversation threads
             if "session_id" in input_data:
                 payload["session_id"] = input_data["session_id"]
+                log.info(f"✅ Using session_id for Langflow: {input_data['session_id']}")
 
             timeout_config = aiohttp.ClientTimeout(total=timeout)
 
             async with aiohttp.ClientSession(timeout=timeout_config) as session:
+                log.info(f"🌐 Calling Langflow: {url} with payload: {payload}")
                 async with session.post(url, json=payload, headers=headers) as response:
                     if response.status >= 400:
                         error_text = await response.text()

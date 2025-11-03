@@ -71,7 +71,6 @@
 						<span class="font-semibold text-xl">CerebraUI</span>
 					</button>
 
-					<!-- New Chat 按钮 - 移到 logo 右边 -->
 					<Tooltip content={$i18n.t('New Chat')}>
 						<button
 							id="new-chat-button"

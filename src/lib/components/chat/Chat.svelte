@@ -244,19 +244,25 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 
 	let chat = null;
 
-	// Deep Research配置函数
-	function getDeepResearchEnabled() {
+	let deepResearchWorkflowEnabled = false;
+
+	const checkDeepResearchEnabled = async () => {
 		try {
-			const saved = localStorage.getItem('deepResearchConfig');
-			if (saved) {
-				const config = JSON.parse(saved);
-				return config.ENABLE_DEEP_RESEARCH === true;
+			const response = await fetch('/api/v1/workflows/', {
+				credentials: 'include'
+			});
+			if (response.ok) {
+				const workflows = await response.json();
+				const deepResearch = workflows.find((w: any) => 
+					w.workflow_type === 'deep_research' && w.is_active === true
+				);
+				deepResearchWorkflowEnabled = !!deepResearch;
 			}
 		} catch (error) {
-			console.error('Error loading deep research config:', error);
+			console.error('Error checking Deep Research workflow:', error);
+			deepResearchWorkflowEnabled = false;
 		}
-		return true; // 默认开启
-	}
+	};
 	let tags = [];
 
 	let history = {
@@ -298,6 +304,8 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 						webSearchEnabled = input.webSearchEnabled;
 						deepResearchEnabled = input.deepResearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
+						codeInterpreterEnabled = input.codeInterpreterEnabled;
+						selectedWorkflowIds = input.selectedWorkflowIds;
 					} catch (e) {}
 				}
 
@@ -536,6 +544,8 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 		window.addEventListener('message', onMessageHandler);
 		$socket?.on('chat-events', chatEventHandler);
 
+		await checkDeepResearchEnabled();
+
 		if (!$chatId) {
 			chatIdUnsubscriber = chatId.subscribe(async (value) => {
 				if (!value) {
@@ -558,6 +568,8 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 				webSearchEnabled = input.webSearchEnabled;
 				deepResearchEnabled = input.deepResearchEnabled;
 				imageGenerationEnabled = input.imageGenerationEnabled;
+				codeInterpreterEnabled = input.codeInterpreterEnabled;
+				selectedWorkflowIds = input.selectedWorkflowIds;
 			} catch (e) {
 				prompt = '';
 				files = [];
@@ -565,6 +577,8 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 				webSearchEnabled = false;
 				deepResearchEnabled = false;
 				imageGenerationEnabled = false;
+				codeInterpreterEnabled = false;
+				selectedWorkflowIds = [];
 			}
 		}
 
@@ -1766,7 +1780,7 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 						($user?.role === 'admin' ||($user?.permissions?.features?.web_search ?? true))
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
 							: false,
-					deep_research: getDeepResearchEnabled() ? deepResearchEnabled : false
+					deep_research: deepResearchWorkflowEnabled ? deepResearchEnabled : false
 				},
 				variables: {
 					...getPromptVariables(
@@ -2237,22 +2251,23 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 						</div>
 					{:else}
 						<div class="overflow-auto w-full h-full flex items-center">
-							<Placeholder
-								{history}
-								{selectedModels}
-								bind:files
-								bind:prompt
-								bind:autoScroll
-								bind:selectedToolIds
-								bind:imageGenerationEnabled
-								bind:codeInterpreterEnabled
-								bind:webSearchEnabled
-								bind:deepResearchEnabled
-								bind:atSelectedModel
-								transparentBackground={$settings?.backgroundImageUrl ?? false}
-								toolServers={$toolServers}
-								{stopResponse}
-								{createMessagePair}
+						<Placeholder
+							{history}
+							{selectedModels}
+							bind:files
+							bind:prompt
+							bind:autoScroll
+							bind:selectedToolIds
+							bind:imageGenerationEnabled
+							bind:codeInterpreterEnabled
+							bind:webSearchEnabled
+							bind:deepResearchEnabled
+							bind:selectedWorkflowIds
+							bind:atSelectedModel
+							transparentBackground={$settings?.backgroundImageUrl ?? false}
+							toolServers={$toolServers}
+							{stopResponse}
+							{createMessagePair}
 								on:upload={async (e) => {
 									const { type, data } = e.detail;
 

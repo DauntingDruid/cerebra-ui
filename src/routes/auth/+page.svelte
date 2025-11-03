@@ -4,6 +4,7 @@
 	import { onMount, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { get } from 'svelte/store';
 
 	import { getBackendConfig } from '$lib/apis';
 	import { ldapUserSignIn, getSessionUser, userSignIn, userSignUp } from '$lib/apis/auths';
@@ -139,10 +140,52 @@
 	}
 
 	onMount(async () => {
-		if ($user !== undefined) {
+		if (($user === undefined || $user === null) && typeof window !== 'undefined') {
+			await new Promise((resolve) => {
+				let timeoutId = null;
+				let unsubscribe = null;
+				let intervalId = null;
+				let resolved = false;
+				
+				const cleanup = () => {
+					if (timeoutId) clearTimeout(timeoutId);
+					if (intervalId) clearInterval(intervalId);
+					if (unsubscribe) unsubscribe();
+				};
+				
+				const finish = () => {
+					if (resolved) return;
+					resolved = true;
+					cleanup();
+					tick().then(() => resolve());
+				};
+				
+				timeoutId = setTimeout(() => {
+					finish();
+				}, 5000);
+				
+				intervalId = setInterval(() => {
+					const currentUser = get(user);
+					if (currentUser !== undefined) {
+						finish();
+					}
+				}, 100);
+				
+				unsubscribe = user.subscribe((currentUser) => {
+					if (currentUser !== undefined) {
+						finish();
+					}
+				});
+			});
+		}
+		
+		const currentUser = get(user);
+		if (currentUser !== undefined && currentUser !== null) {
 			const redirectPath = querystringValue('redirect') || '/';
 			goto(redirectPath);
+			return;
 		}
+		
 		await checkOauthCallback();
 
 		loaded = true;
@@ -154,8 +197,10 @@
 			onboarding = $config?.onboarding ?? false;
 		}
 		
-		// 如果不是onboarding状态，且不在密码重置相关页面，重定向到新的登录页面
-		if (!onboarding && !window.location.pathname.includes('/forgot-password') && !window.location.pathname.includes('/reset-password')) {
+		if (!onboarding && 
+			!window.location.pathname.includes('/forgot-password') && 
+			!window.location.pathname.includes('/reset-password') &&
+			!window.location.pathname.includes('/login')) {
 			goto('/auth/login');
 		}
 	});

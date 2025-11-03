@@ -572,32 +572,34 @@
 				const currentUrl = `${window.location.pathname}${window.location.search}`;
 				const encodedUrl = encodeURIComponent(currentUrl);
 
-				if (localStorage.token) {
-					// Get Session User Info
-					const sessionUser = await getSessionUser(localStorage.token).catch((error) => {
-						toast.error(`${error}`);
-						return null;
-					});
+				// Try to get session user - backend can authenticate via localStorage.token or cookie
+				// Pass the token if it exists (or empty string to let backend check cookie)
+				const tokenToUse = localStorage.token || '';
+				
+				// Get Session User Info
+				// Backend can authenticate from:
+				// 1. Authorization header (if token provided)
+				// 2. Cookie (sent automatically with credentials: 'include')
+				const sessionUser = await getSessionUser(tokenToUse).catch((error) => {
+					// Log error but don't show toast (handled by redirect logic below)
+					console.error('Session validation failed:', error);
+					return null;
+				});
 
-					if (sessionUser) {
-						// Save Session User to Store
-						// $socket.emit('user-join', { auth: { token: sessionUser.token } });
-						// await user.set(sessionUser);
-						// await config.set(await getBackendConfig());
-						$socket.emit('user-join', { auth: { token: sessionUser.token } });
-						await user.set(sessionUser);
-						await config.set(await getBackendConfig());
-					} else {
-						// Redirect Invalid Session User to /auth Page
-						localStorage.removeItem('token');
-						await goto(`/auth?redirect=${encodedUrl}`);
+				if (sessionUser) {
+					// Update localStorage with the new token from backend (important: backend may refresh the token)
+					if (sessionUser.token) {
+						localStorage.token = sessionUser.token;
 					}
+					// Save Session User to Store
+					$socket.emit('user-join', { auth: { token: sessionUser.token } });
+					await user.set(sessionUser);
+					await config.set(await getBackendConfig());
 				} else {
+					// No valid session found - redirect to auth page
+					localStorage.removeItem('token');
+					
 					// Don't redirect if we're already on the auth page
-					// Needed because we pass in tokens from OAuth logins via URL fragments
-					// if ($page.url.pathname !== '/auth') {
-					// 	await goto(`/auth?redirect=${encodedUrl}`);
-
 					const publicPaths = ['/auth', '/auth/reset-password', '/auth/reset-password/confirm'];
 					const isPublicPath = publicPaths.some(path => $page.url.pathname.startsWith(path));
 					

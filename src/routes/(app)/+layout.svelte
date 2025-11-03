@@ -91,10 +91,55 @@
 		
 		
 		
-		// 用户登录与权限控制
-		if ($user === undefined || $user === null) {
+		if (($user === undefined || $user === null) && typeof window !== 'undefined') {
+			await new Promise<void>((resolve) => {
+				let timeoutId: ReturnType<typeof setTimeout> | null = null;
+				let unsubscribe: (() => void) | null = null;
+				let intervalId: ReturnType<typeof setInterval> | null = null;
+				let resolved = false;
+				
+				const cleanup = () => {
+					if (timeoutId) clearTimeout(timeoutId);
+					if (intervalId) clearInterval(intervalId);
+					if (unsubscribe) unsubscribe();
+				};
+				
+				const finish = () => {
+					if (resolved) return;
+					resolved = true;
+					cleanup();
+					tick().then(() => resolve());
+				};
+				
+				timeoutId = setTimeout(() => {
+					console.log('Auth wait timeout - checking user state');
+					finish();
+				}, 5000);
+				
+				intervalId = setInterval(() => {
+					const currentUser = get(user);
+					if (currentUser !== undefined) {
+						console.log('User state set, stopping wait');
+						finish();
+					}
+				}, 100);
+				
+				unsubscribe = user.subscribe((currentUser) => {
+					if (currentUser !== undefined) {
+						console.log('User store updated:', currentUser ? 'authenticated' : 'null');
+						finish();
+					}
+				});
+			});
+		}
+		
+		const currentUser = get(user);
+		console.log('Final user check:', currentUser ? `role: ${currentUser.role}` : 'null/undefined');
+		
+		if (currentUser === undefined || currentUser === null) {
+			console.log('No user found, redirecting to /auth');
 			await goto('/auth');
-		} else if (['user', 'admin'].includes($user?.role)) {
+		} else if (['user', 'admin'].includes(currentUser?.role)) {
 			try {
 				// Check if IndexedDB exists
 				DB = await openDB('Chats', 1);
@@ -112,7 +157,6 @@
 			} catch (error) {
 				// IndexedDB Not Found
 			}
-			// 调用后端入口：统一在这里拉配置、模型、工具、横幅、版本等数据，真正的在lib/apis
 			const userSettings = await getUserSettings(localStorage.token).catch((error) => {
 				console.error(error);
 				return null;
@@ -228,7 +272,6 @@
 				}
 			});
 
-			// 注释掉What's New弹窗，不再自动弹出
 			// if ($user?.role === 'admin' && ($settings?.showChangelog ?? true)) {
 			// 	showChangelog.set($settings?.version !== $config.version);
 			// }
@@ -264,7 +307,6 @@
 	});
 
 	const checkForVersionUpdates = async () => {
-		// 版本检查与更新提示
 		version = await getVersionUpdates(localStorage.token).catch((error) => {
 			return {
 				current: WEBUI_VERSION,
@@ -274,12 +316,8 @@
 	};
 </script>
 
-<!-- 全局设置弹窗 -->
 <SettingsModal bind:show={$showSettings} />
-<!-- 更新日志弹窗 管理员可见 -->
 <ChangelogModal bind:show={$showChangelog} />
-
-<!-- 更新提示弹窗 每天最多提示一次-->
 <!-- {#if version && compareVersion(version.latest, version.current) && ($settings?.showUpdateToast ?? true)}
 	<div class=" absolute bottom-8 right-8 z-50" in:fade={{ duration: 100 }}>
 		<UpdateInfoToast
@@ -296,7 +334,6 @@
 	<div
 		class=" text-gray-700 dark:text-gray-100 bg-white dark:bg-gray-900 h-screen max-h-[100dvh] overflow-auto flex flex-row justify-end"
 	>
-		<!-- 用户未登录或权限不足 -->
 		{#if !['user', 'admin'].includes($user?.role)}
 			<AccountPending />
 		{:else if localDBChats.length > 0}

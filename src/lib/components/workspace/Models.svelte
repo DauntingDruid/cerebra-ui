@@ -203,7 +203,6 @@
 		</div>
 
 		<div class=" flex items-center w-full space-x-5">
-			<!-- 搜索框 - 固定宽度 -->
 			<div class="flex items-center w-64 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition">
 				<div class=" self-center ml-3 mr-2">
 					<Search className="size-5" />
@@ -215,9 +214,7 @@
 				/>
 			</div>
 
-			<!-- 功能按钮组 - 紧凑排列 -->
 			<div class="flex items-center space-x-2">
-				<!-- Import Models 按钮 -->
 				<button
 					class="flex text-sm items-center space-x-1 px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition"
 					on:click={() => {
@@ -241,7 +238,6 @@
 					</div>
 				</button>
 
-				<!-- Export Models 按钮 -->
 				{#if models.length}
 					<button
 						class="flex text-sm items-center space-x-1 px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition"
@@ -267,7 +263,6 @@
 					</button>
 				{/if}
 
-				<!-- + 图标按钮 -->
 				<a
 					class=" px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center space-x-1"
 					href="/workspace/models/create"
@@ -488,7 +483,6 @@
 		</div>
 	{/if}
 
-	<!-- 注释掉Made by Open WebUI Community部分 -->
 	<!-- {#if $config?.features.enable_community_sharing}
 		<div class=" my-16">
 			<div class=" text-xl font-medium mb-1 line-clamp-1">

@@ -170,6 +170,9 @@
 			return null;
 		});
 
+		// Update backend config to reflect image generation status
+		backendConfig.set(await getBackendConfig());
+
 		getModels();
 		dispatch('save');
 		loading = false;

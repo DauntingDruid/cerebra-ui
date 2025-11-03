@@ -9,7 +9,7 @@ export type Workflow = {
   user_id: string;
   name: string;
   description?: string;
-  workflow_type: 'langflow' | 'n8n' | 'langchain' | 'custom';
+  workflow_type: 'langflow' | 'n8n' | 'langchain' | 'deep_research' | 'custom';
   config: Json;
   is_active: boolean;
   created_at: string | number;
@@ -135,6 +135,14 @@ export const createCredential = async (payload: {
 export const deleteCredential = async (credentialId: string) => {
   const res = await jfetch(`${BASE}/credentials/${credentialId}`, { method: 'DELETE' });
   return handle(res) as Promise<{ status: boolean; message: string }>;
+};
+
+export const updateCredential = async (credentialId: string, credential: Partial<WorkflowCredential>) => {
+  const res = await jfetch(`${BASE}/credentials/${credentialId}`, {
+    method: 'PUT',
+    body: JSON.stringify(credential)
+  });
+  return handle(res) as Promise<WorkflowCredential>;
 };
 
 // =======================

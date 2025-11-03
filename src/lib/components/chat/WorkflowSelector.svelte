@@ -124,8 +124,8 @@
 
       <div class="px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
         <a
-          href="/admin/workflows"
-          class="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+          href="/workspace/workflows"
+          class="text-xs text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] hover:underline"
         >
           Manage Workflows →
         </a>

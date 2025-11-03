@@ -102,7 +102,6 @@
 		</div>
 
 		<div class=" flex items-center w-full space-x-5">
-			<!-- 搜索框 - 固定宽度 -->
 			<div class="flex items-center w-64 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition">
 				<div class=" self-center ml-3 mr-2">
 					<Search className="size-5" />
@@ -114,9 +113,7 @@
 				/>
 			</div>
 
-			<!-- 功能按钮组 - 紧凑排列 -->
 			<div class="flex items-center space-x-2">
-				<!-- Import Prompts 按钮 -->
 				<button
 					class="flex text-sm items-center space-x-1 px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition"
 					on:click={() => {
@@ -140,7 +137,6 @@
 					</div>
 				</button>
 
-				<!-- Export Prompts 按钮 -->
 				{#if filteredItems.length}
 					<button
 						class="flex text-sm items-center space-x-1 px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition"
@@ -166,7 +162,6 @@
 					</button>
 				{/if}
 
-				<!-- + 图标按钮 -->
 				<a
 					class=" px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center space-x-1"
 					href="/workspace/prompts/create"
@@ -185,7 +180,6 @@
 				<div class="flex flex-col w-full overflow-hidden mt-0.5 mb-0.5">
 					<div class="text-left w-full">
 						<div class="flex flex-col w-full overflow-hidden">
-							<!-- 第一行：图标 + 名称 -->
 							<div class="flex items-center gap-2 mb-1">
 								<PromptsIcon className="w-5 h-5 text-gray-900 dark:text-gray-100 flex-shrink-0" />
 								<div class=" text-base font-medium line-clamp-1 text-gray-900 dark:text-gray-100">
@@ -193,7 +187,6 @@
 								</div>
 							</div>
 							
-							<!-- 第二行：Command -->
 							<div class=" text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
 								{prompt.command}
 							</div>
@@ -218,7 +211,6 @@
 						</div>
 
 						<div class="flex flex-row gap-0.5 items-center">
-							<!-- 编辑按钮 -->
 							<a
 								class="self-center w-fit text-sm px-2 py-2 dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 rounded-xl"
 								href={`/workspace/prompts/edit?command=${encodeURIComponent(prompt.command)}`}

@@ -64,7 +64,6 @@
 	// 	);
 	// 	await setSessionUser(sessionUser);
 		
-	// 	// 注释掉邮箱验证跳转，直接进入主页
 	// 	// goto('/auth/verify-email?type=signup');
 	// };
 

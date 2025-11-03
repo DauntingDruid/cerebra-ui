@@ -85,21 +85,45 @@ export const updateAdminConfig = async (token: string, body: object) => {
 export const getSessionUser = async (token: string) => {
 	let error = null;
 
+	// Build headers - only add Authorization if token exists
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json'
+	};
+	if (token) {
+		headers.Authorization = `Bearer ${token}`;
+	}
+
 	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/`, {
 		method: 'GET',
-		headers: {
-			'Content-Type': 'application/json',
-			Authorization: `Bearer ${token}`
-		},
-		credentials: 'include'
+		headers: headers,
+		credentials: 'include' // Important: sends cookies to backend
 	})
 		.then(async (res) => {
-			if (!res.ok) throw await res.json();
+			// Check if response is actually JSON before trying to parse
+			const contentType = res.headers.get('content-type');
+			const isJson = contentType && contentType.includes('application/json');
+			
+			if (!res.ok) {
+				// If not JSON, return null (likely an HTML error page)
+				if (!isJson) {
+					console.warn('getSessionUser: Received non-JSON error response (likely HTML)', res.status);
+					throw { detail: `Server returned ${res.status} (not JSON)` };
+				}
+				const errorData = await res.json().catch(() => ({ detail: 'Authentication failed' }));
+				throw errorData;
+			}
+			
+			// If not JSON, don't try to parse it as JSON
+			if (!isJson) {
+				console.warn('getSessionUser: Received non-JSON response (likely HTML)', res.status);
+				throw { detail: 'Server returned non-JSON response' };
+			}
+			
 			return res.json();
 		})
 		.catch((err) => {
-			console.log(err);
-			error = err.detail;
+			console.log('getSessionUser error:', err);
+			error = err?.detail || err?.message || 'Authentication failed';
 			return null;
 		});
 

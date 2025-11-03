@@ -6,9 +6,6 @@
 
 	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
-	import Badge from '$lib/components/common/Badge.svelte';
-	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
 
 	let formElement = null;
 	let loading = false;
@@ -285,125 +282,123 @@ class Pipe:
 	};
 </script>
 
-<div class=" flex flex-col justify-between w-full overflow-y-auto h-full">
-	<div class="mx-auto w-full md:px-0 h-full">
-		<form
-			bind:this={formElement}
-			class=" flex flex-col max-h-[100dvh] h-full"
-			on:submit|preventDefault={() => {
-				if (edit) {
-					submitHandler();
-				} else {
-					showConfirm = true;
-				}
-			}}
-		>
-			<div class="flex flex-col flex-1 overflow-auto h-0 rounded-lg">
-				<div class="w-full mb-2 flex flex-col gap-0.5">
-					<div class="flex w-full items-center">
-						<div class=" shrink-0 mr-2">
-							<Tooltip content={$i18n.t('Back')}>
-								<button
-									class="w-full text-left text-sm py-1.5 px-1 rounded-lg dark:text-gray-300 dark:hover:text-white hover:bg-black/5 dark:hover:bg-gray-850"
-									on:click={() => {
-										goto('/admin/functions');
-									}}
-									type="button"
-								>
-									<ChevronLeft strokeWidth="2.5" />
-								</button>
-							</Tooltip>
-						</div>
+<div class="w-full max-h-full">
+	<button
+		class="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+		on:click={() => {
+			goto('/admin/functions');
+		}}
+	>
+		<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+		</svg>
+		{$i18n.t('Back')}
+	</button>
 
-						<div class="flex-1">
-							<Tooltip content={$i18n.t('e.g. My Filter')} placement="top-start">
-								<input
-									class="w-full text-2xl font-medium bg-transparent outline-hidden font-primary"
-									type="text"
-									placeholder={$i18n.t('Function Name')}
-									bind:value={name}
-									required
-								/>
-							</Tooltip>
-						</div>
-
-						<div>
-							<Badge type="muted" content={$i18n.t('Function')} />
+	<form
+		bind:this={formElement}
+		class="flex flex-col max-w-4xl mx-auto mt-10 mb-10"
+		on:submit|preventDefault={() => {
+			if (edit) {
+				submitHandler();
+			} else {
+				showConfirm = true;
+			}
+		}}
+	>
+		<div class=" w-full flex flex-col justify-center">
+			<div class="w-full flex flex-col gap-5">
+				<div class="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div class="w-full">
+						<div class=" text-sm mb-2">{$i18n.t('Function Name')}</div>
+						<div class="w-full mt-1">
+							<input
+								class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+								type="text"
+								bind:value={name}
+								placeholder={$i18n.t('Function Name')}
+								required
+							/>
 						</div>
 					</div>
 
-					<div class=" flex gap-2 px-1 items-center">
-						{#if edit}
-							<div class="text-sm text-gray-500 shrink-0">
-								{id}
-							</div>
-						{:else}
-							<Tooltip className="w-full" content={$i18n.t('e.g. my_filter')} placement="top-start">
+					<div class="w-full">
+						<div class=" text-sm mb-2">{$i18n.t('Function ID')}</div>
+						<div class="w-full mt-1">
+							{#if edit}
+								<div class="text-sm text-gray-500 py-2 px-4">
+									{id}
+								</div>
+							{:else}
 								<input
-									class="w-full text-sm disabled:text-gray-500 bg-transparent outline-hidden"
+									class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
 									type="text"
-									placeholder={$i18n.t('Function ID')}
 									bind:value={id}
+									placeholder={$i18n.t('Function ID')}
 									required
 									disabled={edit}
 								/>
-							</Tooltip>
-						{/if}
-
-						<Tooltip
-							className="w-full self-center items-center flex"
-							content={$i18n.t('e.g. A filter to remove profanity from text')}
-							placement="top-start"
-						>
-							<input
-								class="w-full text-sm bg-transparent outline-hidden"
-								type="text"
-								placeholder={$i18n.t('Function Description')}
-								bind:value={meta.description}
-								required
-							/>
-						</Tooltip>
-					</div>
-				</div>
-
-				<div class="mb-2 flex-1 overflow-auto h-0 rounded-lg">
-					<CodeEditor
-						bind:this={codeEditor}
-						value={content}
-						lang="python"
-						{boilerplate}
-						onChange={(e) => {
-							_content = e;
-						}}
-						onSave={async () => {
-							if (formElement) {
-								formElement.requestSubmit();
-							}
-						}}
-					/>
-				</div>
-
-				<div class="pb-3 flex justify-between">
-					<div class="flex-1 pr-3">
-						<div class="text-xs text-gray-500 line-clamp-2">
-							<span class=" font-semibold dark:text-gray-200">{$i18n.t('Warning:')}</span>
-							{$i18n.t('Functions allow arbitrary code execution')} <br />—
-							<span class=" font-medium dark:text-gray-400"
-								>{$i18n.t(`don't install random functions from sources you don't trust.`)}</span
-							>
+							{/if}
 						</div>
 					</div>
+				</div>
 
-					<button
-						class="px-3.5 py-1.5 text-sm font-medium bg-black hover:bg-gray-900 text-white dark:bg-white dark:text-black dark:hover:bg-gray-100 transition rounded-full"
-						type="submit"
-					>
-						{$i18n.t('Save')}
-					</button>
+				<div class="w-full">
+					<div class=" text-sm mb-2">{$i18n.t('Description')}</div>
+					<div class="w-full mt-1">
+						<input
+							class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+							type="text"
+							bind:value={meta.description}
+							placeholder={$i18n.t('Function Description')}
+							required
+						/>
+					</div>
+				</div>
+
+				<div class="w-full">
+					<div class=" text-sm mb-2">{$i18n.t('Function Content')}</div>
+					<div class=" w-full mt-1">
+						<div class="w-full rounded-lg bg-gray-50 dark:bg-gray-850 h-[400px] overflow-hidden">
+							<CodeEditor
+								bind:this={codeEditor}
+								value={content}
+								lang="python"
+								{boilerplate}
+								onChange={(e) => {
+									_content = e;
+								}}
+								onSave={async () => {
+									if (formElement) {
+										formElement.requestSubmit();
+									}
+								}}
+							/>
+						</div>
+					</div>
+					
+					<div class="text-xs text-gray-400 dark:text-gray-500 mt-2">
+						ⓘ {$i18n.t('Functions allow arbitrary code execution')}.
+						{$i18n.t('Make sure to add type hints and descriptions for your functions')}.
+					</div>
+
+					<div class="text-xs text-gray-400 dark:text-gray-500">
+						{$i18n.t('Do not install functions from sources you do not fully trust')}.
+					</div>
 				</div>
 			</div>
-		</form>
-	</div>
+		</div>
+
+		<div class="flex justify-center mt-8 mb-12">
+			<button
+				class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium text-sm hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors {loading ? 'cursor-not-allowed' : ''}"
+				type="submit"
+				disabled={loading}
+			>
+				{$i18n.t('Save')}
+			</button>
+		</div>
+	</form>
 </div>
 
 <ConfirmDialog

@@ -192,6 +192,13 @@ async def create_credential(
     """Store a new API credential"""
     form_data.service_name = _norm(form_data.service_name)
 
+    # Validate api_key is provided for creation
+    if not form_data.api_key or not form_data.api_key.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="API key is required when creating a credential"
+        )
+
     # Fix endpoint for container if provided
     if form_data.endpoint_url:
         form_data.endpoint_url = _fix_endpoint_for_container(form_data.endpoint_url)
@@ -202,6 +209,38 @@ async def create_credential(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create credential. Service name might already exist."
+        )
+
+    return credential
+
+
+@router.put("/credentials/{credential_id}", response_model=WorkflowCredentialModel)
+async def update_credential(
+    credential_id: str,
+    form_data: WorkflowCredentialForm,
+    user: UserModel = Depends(get_verified_user)
+):
+    """Update an existing credential"""
+    existing_credential = WorkflowCredentials.get_credentials_by_user_id(user.id)
+    
+    # Check if credential exists
+    cred_exists = any(c.id == credential_id for c in existing_credential)
+    if not cred_exists:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credential not found"
+        )
+
+    form_data.service_name = _norm(form_data.service_name)
+    if form_data.endpoint_url:
+        form_data.endpoint_url = _fix_endpoint_for_container(form_data.endpoint_url)
+
+    credential = WorkflowCredentials.update_credential(credential_id, user.id, form_data)
+
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update credential"
         )
 
     return credential
