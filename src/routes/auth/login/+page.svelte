@@ -203,10 +203,10 @@
 								</label>
 							<button
 								type="button"
-								class="text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA]"
+								class="text-sm text-[#9333EA] hover:text-[#7C3AED] dark:text-[#A855F7] dark:hover:text-[#9333EA]"
 								on:click={() => goto('/auth/forgot-password')}
 							>
-									{$i18n.t('Forgot?')}
+								{$i18n.t('Forgot?')}
 							</button>
 						</div>
 						<input
@@ -234,7 +234,7 @@
 					</span>
 					<button
 						type="button"
-						class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
+						class="ml-1 text-sm text-[#9333EA] hover:text-[#7C3AED] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 						on:click={() => goto('/auth/signup')}
 					>
 						{$i18n.t('Sign up')}

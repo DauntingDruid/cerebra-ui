@@ -272,7 +272,7 @@
 						</span>
 						<button
 							type="button"
-							class="ml-1 text-sm text-[#A855F7] hover:text-[#9333EA] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
+							class="ml-1 text-sm text-[#9333EA] hover:text-[#7C3AED] dark:text-[#A855F7] dark:hover:text-[#9333EA] font-medium"
 							on:click={() => goto('/auth/login')}
 						>
 							Sign In
