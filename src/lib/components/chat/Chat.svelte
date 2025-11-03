@@ -127,19 +127,22 @@
 	let codeInterpreterEnabled = false;
 	let selectedWorkflowIds: string[] = [];
 
-	const executeWorkflow = async (workflowId: string, message: string, chatId: string) => {
-	try {
-		const res = await fetch(`/api/v1/workflows/${workflowId}/execute`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			credentials: 'include',
-			body: JSON.stringify({
-				input_data: { message },
-				chat_id: chatId
-			})
-		});
+	const executeWorkflow = async (workflowId: string, message: string, chatId: string, files: any[] = []) => {
+    try {
+        const res = await fetch(`/api/v1/workflows/${workflowId}/execute`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                input_data: { 
+                    message,
+                    files: files.length > 0 ? files : undefined  // ✅ Add files!
+                },
+                chat_id: chatId
+            })
+        });
 
 		if (!res.ok) {
 			throw new Error(`Workflow execution failed: ${res.statusText}`);
@@ -1496,7 +1499,7 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 		// Execute workflow if selected (hybrid mode)
 		if (selectedWorkflowIds.length > 0) {
 			for (const workflowId of selectedWorkflowIds) {
-				await executeWorkflow(workflowId, userPrompt, $chatId);
+				await executeWorkflow(workflowId, userPrompt, $chatId, _files);
 			}
 			// When workflow is active, SKIP the model entirely
 			console.log('Workflow executed - skipping model');

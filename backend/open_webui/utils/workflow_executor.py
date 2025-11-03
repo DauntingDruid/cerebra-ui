@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 import logging
 import os
 import json
+import base64
 
 log = logging.getLogger(__name__)
 
@@ -312,7 +313,7 @@ class WorkflowExecutor:
         timeout: int = 300
     ) -> Dict[str, Any]:
         """
-        Execute Deep Research (LangGraph) workflow
+        Execute Deep Research (LangGraph) workflow with file support
         Reuses thread_id from session_id (same pattern as Langflow)
         """
         try:
@@ -323,6 +324,11 @@ class WorkflowExecutor:
 
             headers = {"Content-Type": "application/json"}
             timeout_config = aiohttp.ClientTimeout(total=timeout)
+
+            message = input_data.get("message", "")
+            files = input_data.get("files", [])
+            
+            log.info(f"Deep Research - Files: {len(files)} file(s)")
 
             async with aiohttp.ClientSession(timeout=timeout_config) as session:
                 # Step 1: Create assistant with proper config
@@ -371,16 +377,51 @@ class WorkflowExecutor:
                 else:
                     log.info(f"Reusing existing thread: {thread_id}")
 
-                # Step 3: Run research
+                # Step 3: Process files - Download and encode to base64
+                file_attachments = []
+                if files and len(files) > 0:
+                    for file in files:
+                        try:
+                            file_url = file.get("url", "")
+                            file_name = file.get("name", "unknown")
+                            file_type = file.get("type", "file")
+                            
+                            # Download file content
+                            async with session.get(file_url) as file_resp:
+                                if file_resp.status == 200:
+                                    file_bytes = await file_resp.read()
+                                    # Encode to base64
+                                    import base64
+                                    file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+                                    
+                                    file_attachments.append({
+                                        "name": file_name,
+                                        "type": file_type,
+                                        "data": file_base64
+                                    })
+                                    log.info(f"✅ Encoded file: {file_name} ({len(file_bytes)} bytes)")
+                                else:
+                                    log.warning(f"⚠️ Failed to download file: {file_name}")
+                        except Exception as e:
+                            log.error(f"❌ Error processing file {file.get('name')}: {e}")
+                            continue
+
+                # Step 4: Build message payload with files
+                message_payload = {
+                    "role": "user",
+                    "content": message
+                }
+                
+                # Add files if we have them
+                if file_attachments:
+                    message_payload["files"] = file_attachments
+                    log.info(f"Added {len(file_attachments)} file(s) to message payload")
+
+                # Step 5: Run research
                 run_data = {
                     "assistant_id": assistant_id,
                     "input": {
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": input_data.get("message", "")
-                            }
-                        ]
+                        "messages": [message_payload]
                     },
                     "stream_mode": "values"
                 }

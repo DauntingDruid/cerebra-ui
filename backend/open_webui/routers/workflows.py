@@ -241,6 +241,7 @@ async def execute_workflow_endpoint(
       3) Return immediately with {"id": ..., "status": "pending"}
     Keeps UI responsive even if external services are slow.
     """
+    log.info(f"🚀🚀🚀 EXECUTE ENDPOINT HIT - workflow_id: {workflow_id}")
     # Verify workflow
     workflow = Workflows.get_workflow_by_id(workflow_id)
 
@@ -271,16 +272,26 @@ async def execute_workflow_endpoint(
     input_data = body.get("input_data") or {"message": ""}
 
     # ============================================================
-    # ADD SESSION_ID FOR DEEP_RESEARCH (THREAD CONTINUITY)
+    # ADD SESSION_ID FOR ALL WORKFLOWS (THREAD CONTINUITY)
     # ============================================================
     service_name = _norm(workflow.workflow_type)
+
+    log.info(f"🔍 DEBUG: service_name = {service_name}")
+    log.info(f"🔍 DEBUG: chat_id from body = {body.get('chat_id')}")
+    log.info(f"🔍 DEBUG: full body = {body}")
     
-    if service_name == "deep_research" and body.get("chat_id"):
+    if body.get("chat_id"):
+        log.info(f"🔍 Looking for previous execution for {service_name}...")
+        log.info(f"   workflow_id: {workflow_id}")
+        log.info(f"   chat_id: {body.get('chat_id')}")
+        
         # Get the last successful execution for this workflow + chat
         last_execution = WorkflowExecutions.get_last_completed_execution(
             workflow_id=workflow_id,
             chat_id=body.get("chat_id")
         )
+        
+        log.info(f"   Last execution found: {last_execution is not None}")
         
         # Extract session_id from previous execution's output
         if last_execution and last_execution.output_data:
@@ -293,9 +304,13 @@ async def execute_workflow_endpoint(
                 session_id = output.get("session_id")
                 if session_id:
                     input_data["session_id"] = session_id
-                    log.info(f"✅ Reusing session_id for deep_research: {session_id}")
+                    log.info(f"   ✅ Reusing session_id for {service_name}: {session_id}")
+                else:
+                    log.info(f"   ⚠️ No session_id found in previous execution")
             except Exception as e:
-                log.error(f"Failed to parse previous execution output: {e}")
+                log.error(f"   ❌ Failed to parse previous execution output: {e}")
+        else:
+            log.info(f"   ℹ️ No previous execution found - will create new thread")
     # ============================================================
 
     # Create execution record
@@ -342,10 +357,18 @@ async def execute_workflow_endpoint(
             )
 
             if result.get("success"):
+                # ✅ FIX: Get output and add session_id if present
+                output_data = result.get("output", {})
+                
+                # Add session_id to output_data so we can reuse it later
+                if "session_id" in result:
+                    output_data["session_id"] = result["session_id"]
+                    log.info(f"💾 Saving session_id to database: {result['session_id']}")
+                
                 WorkflowExecutions.update_execution_status(
                     execution.id,
                     status="completed",
-                    output_data=result.get("output")
+                    output_data=output_data
                 )
             else:
                 WorkflowExecutions.update_execution_status(
