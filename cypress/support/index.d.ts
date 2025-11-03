@@ -9,5 +9,6 @@ declare namespace Cypress {
 		loginAdmin(): Chainable<Element>;
 		uploadTestDocument(suffix: any): Chainable<Element>;
 		deleteTestDocument(suffix: any): Chainable<Element>;
+		checkAccessibility(options?: Partial<Cypress.Loggable & Cypress.Timeoutable>): Chainable<Element>;
 	}
 }

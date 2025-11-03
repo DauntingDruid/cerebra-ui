@@ -29,6 +29,9 @@ describe('Settings', () => {
 			cy.get('button[aria-label="Select a model"]').click();
 			// Select the first model
 			cy.get('button[aria-label="model-item"]').first().click();
+			// Check accessibility after model selection
+			cy.wait(500);
+			cy.checkAccessibility();
 			// Type a message
 			cy.get('#chat-input').type('Hi, what can you do? A single sentence only please.', {
 				force: true
