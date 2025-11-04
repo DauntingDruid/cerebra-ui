@@ -10,7 +10,7 @@ from typing import List
 from urllib.parse import urlencode
 from sqlalchemy import text
 from open_webui.internal.db import get_db
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from open_webui.env import (
     WEBUI_SESSION_COOKIE_SAME_SITE,
@@ -20,7 +20,7 @@ from open_webui.env import (
     WEBUI_AUTH,
 )
 from open_webui.utils.misc import parse_duration
-from open_webui.utils.auth import create_token, get_password_hash
+from open_webui.utils.auth import get_current_user, create_token, get_password_hash
 from open_webui.utils.access_control import get_permissions
 from open_webui.models.users import Users
 from open_webui.models.auths import Auths, SigninForm, SignupForm
@@ -34,6 +34,53 @@ BETTERAUTH_BASE_URL = os.getenv(
     "BETTERAUTH_BASE_URL",
     "http://betterauth-service-betterauth-1:4000",
 ).rstrip("/")
+
+
+@router.get("/", tags=["auths"])
+async def get_session_user(request: Request, response: Response, user=Depends(get_current_user)):
+    """
+    Validate the session cookie and return the current user's data.
+    This restores the session on page refresh.
+    """
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = None
+    if expires_delta:
+        expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
+    token = create_token(
+        data={"id": user.id},
+        expires_delta=expires_delta,
+    )
+
+    datetime_expires_at = (
+        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+        if expires_at else None
+    )
+
+    response.set_cookie(
+        key="token",
+        value=token,
+        expires=datetime_expires_at,
+        httponly=True,
+        samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
+        secure=WEBUI_SESSION_COOKIE_SECURE,
+    )
+
+    user_permissions = get_permissions(
+        user.id, request.app.state.config.USER_PERMISSIONS
+    )
+
+    return {
+        "token": token,
+        "token_type": "Bearer",
+        "expires_at": expires_at,
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "profile_image_url": user.profile_image_url,
+        "permissions": user_permissions,
+    }
 
 
 TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET_KEY", "")
