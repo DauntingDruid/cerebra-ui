@@ -48,16 +48,19 @@
 			return;
 		}
 
-		// Clean up any existing widget
-		if (turnstileWidgetId !== undefined) {
-			try {
+		// ✅ Only clean up if we really have an existing widget
+		try {
+			if (turnstileWidgetId !== undefined && turnstileWidgetId !== null) {
+			// Either reset or remove works; remove guarantees a clean slate
 			window.turnstile.remove(turnstileWidgetId);
 			console.log('♻️ Removed previous widget');
-			} catch (e) {
-			console.warn('Cleanup failed:', e);
+			turnstileWidgetId = undefined;
 			}
+		} catch (e) {
+			console.warn('Cleanup failed:', e);
 		}
 
+		// Clear the container before rendering
 		widgetContainer.innerHTML = '';
 
 		try {
@@ -66,28 +69,28 @@
 			sitekey: import.meta.env.VITE_TURNSTILE_SITE_KEY,
 			theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
 			size: 'normal',
-			appearance: 'always', // ✅ Force a visible widget
-			action: 'login',      // Optional, helps Turnstile analytics
+			appearance: 'always',     // shows the checkbox/UI
+			action: 'login',
 
-			// Callbacks
 			callback: (token) => {
 				turnstileToken = token;
 				console.log('✅ Turnstile verified manually');
 			},
-			'error-callback': () => {
-				console.error('❌ Turnstile error');
-				turnstileToken = '';
-				toast.error('Verification failed. Please try again.');
-			},
 			'expired-callback': () => {
-				console.log('⏰ Turnstile expired');
 				turnstileToken = '';
+				console.log('⏰ Turnstile expired');
 			},
 			'timeout-callback': () => {
-				console.log('⏰ Turnstile timeout');
 				turnstileToken = '';
+				console.log('⏰ Turnstile timeout');
 			},
+			'error-callback': () => {
+				turnstileToken = '';
+				console.error('❌ Turnstile error');
+				toast.error('Verification failed. Please try again.');
+			}
 			});
+			console.log('✅ Widget rendered with ID:', turnstileWidgetId);
 		} catch (e) {
 			console.error('❌ Failed to render Turnstile:', e);
 			toast.error('Security verification failed to load.');
@@ -108,7 +111,7 @@
 
 		try {
 			// Call backend signin
-			console.log('📡 Calling backend signin...');
+			console.log('Calling backend signin...');
 			const response = await fetch(`${WEBUI_BASE_URL}/api/v1/auths/signin`, {
 				method: 'POST',
 				headers: {
@@ -116,7 +119,8 @@
 				},
 				body: JSON.stringify({
 					email: email.toLowerCase(),
-					password: password
+					password: password,
+					turnstile_token: turnstileToken
 				})
 			});
 
@@ -230,20 +234,10 @@
 			script.async = true;
 			script.defer = true;
 			script.setAttribute('data-turnstile', '1');
-
-			script.onload = () => {
-				console.log('✅ Turnstile script loaded');
-				setTimeout(initTurnstile, 200);
-			};
-
-			script.onerror = () => {
-				console.error('❌ Failed to load Turnstile script');
-				toast.error('Failed to load security verification. Please refresh.');
-			};
-
+			script.onload = () => setTimeout(initTurnstile, 200);
+			script.onerror = () => toast.error('Failed to load security verification. Please refresh.');
 			document.head.appendChild(script);
 		} else {
-			console.log('♻️ Turnstile script already loaded');
 			if (window.turnstile) setTimeout(initTurnstile, 200);
 		}
 	});

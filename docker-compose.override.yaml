@@ -14,7 +14,8 @@ services:
       - CORS_ALLOW_ORIGIN=http://localhost:3000
       - WEBUI_SESSION_COOKIE_SAME_SITE=lax
       - WEBUI_SESSION_COOKIE_SECURE=false
-      - WEBUI_AUTH=true 
+      - WEBUI_AUTH=true
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY} 
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro

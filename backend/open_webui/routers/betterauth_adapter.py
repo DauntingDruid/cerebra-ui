@@ -1,10 +1,12 @@
 # backend/open_webui/routers/betterauth_adapter.py
-import os
+import os, httpx
 import json
 import time
 import datetime
 import uuid
 import aiohttp
+import re
+from typing import List
 from urllib.parse import urlencode
 from sqlalchemy import text
 from open_webui.internal.db import get_db
@@ -32,6 +34,26 @@ BETTERAUTH_BASE_URL = os.getenv(
     "BETTERAUTH_BASE_URL",
     "http://betterauth-service-betterauth-1:4000",
 ).rstrip("/")
+
+
+TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET_KEY", "")
+
+async def verify_turnstile_token(token: str, remote_ip: str | None = None):
+    if not TURNSTILE_SECRET:
+        raise HTTPException(status_code=500, detail="Turnstile not configured")
+
+    data = {"secret": TURNSTILE_SECRET, "response": token}
+    if remote_ip:
+        data["remoteip"] = remote_ip
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post("https://challenges.cloudflare.com/turnstile/v0/siteverify", data=data)
+        j = res.json()
+        if not j.get("success"):
+            # Log error-codes if present to debug site config
+            codes = j.get("error-codes")
+            print("[Turnstile] verify failed:", codes)
+            raise HTTPException(status_code=400, detail="Invalid Turnstile token")
 
 
 def _upsert_user_bootstrap(email: str, name: str):
@@ -119,14 +141,34 @@ async def _get_text(path: str, query: dict):
 
 @router.post("/signin")
 async def signin(request: Request, response: Response, form_data: SigninForm):
-    
+    # 1) Read turnstile token from JSON (frontend must send it)
+    payload = await request.json()
+    ts_token = payload.get("turnstile_token")
+    if not ts_token:
+        raise HTTPException(status_code=400, detail="Turnstile token missing")
+
+    # 2) Verify turnstile first
+    client_ip = request.client.host if request.client else None
+    await verify_turnstile_token(ts_token, client_ip)
+
+    # Will carry through to the final response
+    email_verified = True
+    user = None
+
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
         trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
-        trusted_name = request.headers.get(WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email) if WEBUI_AUTH_TRUSTED_NAME_HEADER else trusted_email
+        trusted_name = request.headers.get(
+            WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email
+        ) if WEBUI_AUTH_TRUSTED_NAME_HEADER else trusted_email
+
         if not Users.get_user_by_email(trusted_email):
-            await signup(request, response, SignupForm(email=trusted_email, password=str(uuid.uuid4()), name=trusted_name))
+            await signup(
+                request, response,
+                SignupForm(email=trusted_email, password=str(uuid.uuid4()), name=trusted_name)
+            )
+
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
         email_verified = True
     elif WEBUI_AUTH is False:
@@ -137,16 +179,17 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
         else:
             if Users.get_num_users() != 0:
                 raise HTTPException(400, detail=ERROR_MESSAGES.EXISTING_USERS)
-            await signup(request, response, SignupForm(email=admin_email, password=admin_password, name="User"))
+            await signup(
+                request, response,
+                SignupForm(email=admin_email, password=admin_password, name="User")
+            )
             user = Auths.authenticate_user(admin_email, admin_password)
         email_verified = True
     else:
-        
         email = form_data.email.lower().strip()
         password = form_data.password
 
         try:
-            from open_webui.internal.db import get_db
             db = next(get_db())
             row = db.execute(
                 text('SELECT "emailVerified" FROM "user" WHERE LOWER(email)=LOWER(:email)'),
@@ -175,8 +218,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
             user_raw = ba.get("user") or {}
             email_verified = bool(user_raw.get("emailVerified", True))
         except HTTPException as e:
-            print(f"[SIGNIN] BetterAuth authentication failed: {e.detail}")
-            
+            # If BA says not verified or 403, return the pending response (no session)
             if e.status_code == 403 or "not verified" in str(e.detail).lower():
                 return {
                     "token": None,
@@ -188,8 +230,9 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
                     "role": None,
                     "profile_image_url": None,
                     "permissions": [],
-                    "email_verified": False,  
+                    "email_verified": False,
                 }
+            # Generic invalid credentials
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
 
         user = Users.get_user_by_email(email)
@@ -209,12 +252,14 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 
     expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
     expires_at = int(time.time()) + int(expires_delta.total_seconds()) if expires_delta else None
-    token = create_token(data={"id": user.id}, expires_delta=expires_delta)
-    datetime_expires_at = (datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc) if expires_at else None)
+    session_token = create_token(data={"id": user.id}, expires_delta=expires_delta)
+    datetime_expires_at = (
+        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc) if expires_at else None
+    )
 
     response.set_cookie(
         key="token",
-        value=token,
+        value=session_token,
         expires=datetime_expires_at,
         httponly=True,
         samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
@@ -224,7 +269,7 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
     user_permissions = get_permissions(user.id, request.app.state.config.USER_PERMISSIONS)
 
     return {
-        "token": token,
+        "token": session_token,
         "token_type": "Bearer",
         "expires_at": expires_at,
         "id": user.id,
@@ -233,8 +278,55 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
         "role": user.role,
         "profile_image_url": user.profile_image_url,
         "permissions": user_permissions,
-        "email_verified": True,
+        "email_verified": email_verified,
     }
+
+
+
+##################################
+PASSWORD_POLICY = {
+    "min_length": 10,
+    "require_uppercase": True,
+    "require_lowercase": True,
+    "require_digit": True,
+    "require_special": True,
+    "forbid_spaces": True,
+}
+
+
+def _password_policy_issues(pw: str) -> list[str]:
+    """
+    Centralized password policy validation.
+    Returns list of requirement messages if password fails.
+    """
+    issues = []
+    
+    if len(pw) < PASSWORD_POLICY["min_length"]:
+        issues.append(f"at least {PASSWORD_POLICY['min_length']} characters")
+    
+    if PASSWORD_POLICY["require_uppercase"] and not re.search(r"[A-Z]", pw):
+        issues.append("one uppercase letter (A–Z)")
+    
+    if PASSWORD_POLICY["require_lowercase"] and not re.search(r"[a-z]", pw):
+        issues.append("one lowercase letter (a–z)")
+    
+    if PASSWORD_POLICY["require_digit"] and not re.search(r"\d", pw):
+        issues.append("one number (0–9)")
+    
+    if PASSWORD_POLICY["require_special"] and not re.search(r"[^A-Za-z0-9]", pw):
+        issues.append("one special character (!@#$…)")
+    
+    if PASSWORD_POLICY["forbid_spaces"] and re.search(r"\s", pw):
+        issues.append("no spaces")
+    
+    return issues
+
+
+###########################################
+
+
+
+
 
 ############################
 # SignUp with BetterAuth
@@ -261,6 +353,13 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
             )
 
     email = form_data.email.lower()
+
+    pw_issues = _password_policy_issues(form_data.password)
+    if pw_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must have: {', '.join(pw_issues)}."
+        )
     
     if Users.get_user_by_email(email):
         raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
@@ -343,7 +442,13 @@ async def reset_password(payload: dict):
     
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-
+    
+    pw_issues = _password_policy_issues(new_password)
+    if pw_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must have: {', '.join(pw_issues)}."
+        )
     try:
         await _post_json("/api/auth/reset-password", {
             "token": token,

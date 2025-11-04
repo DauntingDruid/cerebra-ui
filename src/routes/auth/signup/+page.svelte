@@ -19,6 +19,37 @@
 	let errorMsg = '';
 	let isResending = false;
 
+	// --- Password Policy (default) ---
+	const policy = {
+		minLen: 10,
+		requireUpper: true,
+		requireLower: true,
+		requireDigit: true,
+		requireSpecial: true, // any non-alphanumeric
+		forbidSpaces: true
+	};
+
+	const RE_UPPER = /[A-Z]/;
+	const RE_LOWER = /[a-z]/;
+	const RE_DIGIT = /\d/;
+	const RE_SPECIAL = /[^A-Za-z0-9]/;
+	const RE_SPACE = /\s/;
+
+	function passwordIssues(pw) {
+		const issues = [];
+		if (policy.minLen && pw.length < policy.minLen) issues.push(`at least ${policy.minLen} characters`);
+		if (policy.requireUpper && !RE_UPPER.test(pw)) issues.push('one uppercase letter (A–Z)');
+		if (policy.requireLower && !RE_LOWER.test(pw)) issues.push('one lowercase letter (a–z)');
+		if (policy.requireDigit && !RE_DIGIT.test(pw)) issues.push('one number (0–9)');
+		if (policy.requireSpecial && !RE_SPECIAL.test(pw)) issues.push('one special character (!@#$… )');
+		if (policy.forbidSpaces && RE_SPACE.test(pw)) issues.push('no spaces');
+		return issues;
+	}
+
+	// reactive: re-check on every keystroke
+	$: pwIssues = passwordIssues(password);
+	$: isPasswordValid = pwIssues.length === 0;
+
 	async function setLogoImage() {
 		await tick();
 		const logo = document.getElementById('logo');
@@ -45,6 +76,14 @@
 	const signUpHandler = async () => {
 		sending = true;
 		errorMsg = '';
+		// ⛔ Client-side guard
+		const issues = passwordIssues(password);
+		if (issues.length) {
+			sending = false;
+			errorMsg = `Password must have: ${issues.join(', ')}.`;
+			toast.error(errorMsg);
+			return;
+		}
 		try {
 			// 1) Create user in BetterAuth
 			const r = await fetch(`${AUTH}/api/auth/signup`, {
@@ -179,7 +218,30 @@
 								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
 								placeholder="Enter your password"
 								required
+								autocomplete="new-password"
+    							aria-invalid={!isPasswordValid}
 							/>
+							<!-- Live password policy checklist -->
+							<ul class="mt-2 text-xs space-y-1">
+								<li class={password.length >= policy.minLen ? 'text-green-600' : 'text-gray-500'}>
+									{password.length >= policy.minLen ? '✓' : '•'} At least {policy.minLen} characters
+								</li>
+								<li class={RE_UPPER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_UPPER.test(password) ? '✓' : '•'} One uppercase letter (A–Z)
+								</li>
+								<li class={RE_LOWER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_LOWER.test(password) ? '✓' : '•'} One lowercase letter (a–z)
+								</li>
+								<li class={RE_DIGIT.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_DIGIT.test(password) ? '✓' : '•'} One number (0–9)
+								</li>
+								<li class={RE_SPECIAL.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_SPECIAL.test(password) ? '✓' : '•'} One special character (!@#$…)
+								</li>
+								<li class={!RE_SPACE.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{!RE_SPACE.test(password) ? '✓' : '•'} No spaces
+								</li>
+							</ul>
 						</div>
 
 						{#if errorMsg}
@@ -189,7 +251,7 @@
 						<button
 							type="submit"
 							class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-							disabled={sending}
+							disabled={sending || !isPasswordValid}
 						>
 							{sending ? 'Sending…' : 'Sign Up'}
 						</button>
