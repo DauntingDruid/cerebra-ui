@@ -1,0 +1,49 @@
+# CerebraUI Backend Test Requirements
+# Install with: pip install -r requirements-test.txt
+
+# Testing Framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-html>=3.2.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # For parallel test execution
+pytest-watch>=4.2.0  # For watch mode
+
+# Mocking and Fixtures
+pytest-mock>=3.11.1
+faker>=19.2.0  # For generating test data
+
+# Performance Testing
+pytest-benchmark>=4.0.0
+memory-profiler>=0.61.0
+
+# Coverage
+coverage>=7.2.7
+coverage[toml]>=7.2.7
+
+# Code Quality
+pytest-pylint>=0.19.0
+pytest-flake8>=1.1.1
+black>=23.7.0
+isort>=5.12.0
+mypy>=1.4.1
+
+# HTTP Testing
+httpx>=0.24.1
+requests-mock>=1.11.0
+
+# Database Testing
+pytest-postgresql>=4.1.1
+sqlalchemy>=2.0.19
+
+# Async Testing
+aioresponses>=0.7.4
+
+# Reporting
+pytest-json-report>=1.5.0
+allure-pytest>=2.13.2
+
+# Development Tools
+ipython>=8.14.0
+ipdb>=0.13.13
