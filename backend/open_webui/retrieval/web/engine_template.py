@@ -1,4 +1,4 @@
-import asyncio, httpx, math, logging
+import asyncio, httpx, math, logging, uuid, statistics
 from typing import List, Dict, Optional, Callable, Awaitable
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
 from open_webui.retrieval.web.main import SearchResult, get_filtered_results
@@ -93,23 +93,66 @@ async def template_paged_engine(
 
     loop = asyncio.get_running_loop()
     t0 = loop.time()
+    run_id = uuid.uuid4().hex[:6]
+
+    timing = {
+        "pages": total_pages,
+        "durations": [],
+        "queue_waits": [],
+        "starts": [],
+        "ends": [],
+    }
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         async def one(p: int):
+            t_enq = loop.time()
+            log.info(f"[{engine_name}#{run_id}] page {p} ENQ +{t_enq - t0:.2f}s")
+
             async with sem:
-                start = loop.time()
-                log.info(f"[{engine_name}] page {p} start | Concurrent paging crawling starts")
+                
+                t_acq = loop.time()
+                qwait = t_acq - t_enq
+                log.info(f"[{engine_name}#{run_id}] page {p} START +{t_acq - t0:.2f}s (queue_wait={qwait:.2f}s)")
+
                 try:
                     r = await fetch_page_fn(client, q, p, page_size, timeout)
-                    log.info(f"[{engine_name}] page {p} done in {loop.time() - start:.2f}s | single page time")
+                    
+                    t_end = loop.time()
+                    dur = t_end - t_acq
+                    log.info(f"[{engine_name}#{run_id}] page {p} DONE  +{t_end - t0:.2f}s (dur={dur:.2f}s)")
+
+                    timing["durations"].append(dur)
+                    timing["queue_waits"].append(qwait)
+                    timing["starts"].append(t_acq - t0)
+                    timing["ends"].append(t_end - t0)
                     return r or []
                 except Exception:
-                    log.exception(f"[{engine_name}] fetch page {p} failed")
+                    t_end = loop.time()
+                    log.exception(f"[{engine_name}#{run_id}] page {p} FAIL  +{t_end - t0:.2f}s")
+                    timing["queue_waits"].append(qwait)
+                    timing["starts"].append(t_acq - t0)
+                    timing["ends"].append(t_end - t0)
                     return []
 
         batches = await asyncio.gather(*[asyncio.create_task(one(p)) for p in range(1, total_pages + 1)])
 
-    log.info(f"[{engine_name}] fetched {total_pages} pages in {loop.time() - t0:.2f}s (max_page_concurrency={max_page_concurrency}) | total time")
+    t1 = loop.time()
+    wall = t1 - t0
+
+    if timing["durations"]:
+        sum_dur = sum(timing["durations"])
+        max_dur = max(timing["durations"])
+        p95 = statistics.quantiles(timing["durations"], n=20)[-1] if len(timing["durations"]) >= 2 else timing["durations"][0]
+        avg_q = sum(timing["queue_waits"]) / max(1, len(timing["queue_waits"]))
+ 
+        log.info(
+                f"[{engine_name}#{run_id}] SUMMARY pages={total_pages} "
+                f"wall={wall:.2f}s sum_dur={sum_dur:.2f}s max_dur={max_dur:.2f}s "
+                f"p95_page={p95:.2f}s avg_queue_wait={avg_q:.2f}s "
+                f"(max_conc={max_page_concurrency})"
+            )
+    else:
+        log.info(f"[{engine_name}#{run_id}] SUMMARY pages={total_pages} wall={wall:.2f}s (no pages)")
 
     flat = [x for b in batches if b for x in b][:limit]
     return _postprocess_to_SearchResult(flat, filter_list)
@@ -140,25 +183,54 @@ async def template_variant_engine(
     sem = asyncio.Semaphore(max_variant_concurrency)
     loop = asyncio.get_running_loop()
     t0 = loop.time()
+    run_id = uuid.uuid4().hex[:6]
+
+    timing = {"durations": [], "queue_waits": [], "starts": [], "ends": []}
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         async def one(vq: str, idx: int):
+            t_enq = loop.time()
+            log.info(f"[{engine_name}#{run_id}] var{idx} ENQ +{t_enq - t0:.2f}s q={vq!r}")
             
             await asyncio.sleep(0.05 * (idx % max_variant_concurrency))
             async with sem:
-                start = loop.time()
-                log.info(f"[{engine_name}] variant start | q={vq!r}")
+                t_acq = loop.time()
+                qwait = t_acq - t_enq
+                log.info(f"[{engine_name}#{run_id}] var{idx} START +{t_acq - t0:.2f}s (queue_wait={qwait:.2f}s) q={vq!r}")
                 try:
                     r = await fetch_once_fn(client, vq, per_variant, timeout)
-                    log.info(f"[{engine_name}] variant done  | q={vq!r} in {loop.time() - start:.2f}s got={len(r or [])}")
+                    t_end = loop.time()
+                    dur = t_end - t_acq
+                    log.info(f"[{engine_name}#{run_id}] var{idx} DONE  +{t_end - t0:.2f}s (dur={dur:.2f}s) got={len(r or [])}")
+                    timing["durations"].append(dur)
+                    timing["queue_waits"].append(qwait)
+                    timing["starts"].append(t_acq - t0)
+                    timing["ends"].append(t_end - t0)
                     return r or []
                 except Exception:
-                    log.exception(f"[{engine_name}] variant crash | q={vq!r}")
+                    t_end = loop.time()
+                    log.exception(f"[{engine_name}#{run_id}] var{idx} FAIL  +{t_end - t0:.2f}s q={vq!r}")
+                    timing["queue_waits"].append(qwait)
+                    timing["starts"].append(t_acq - t0)
+                    timing["ends"].append(t_end - t0)
                     return []
 
         pages = await asyncio.gather(*[asyncio.create_task(one(v, i)) for i, v in enumerate(variants)])
 
-    log.info(f"[{engine_name}] fetched {len(variants)} variants in {loop.time() - t0:.2f}s (max_variant_concurrency={max_variant_concurrency}) | total time")
+    wall = loop.time() - t0
+    if timing["durations"]:
+        sum_dur = sum(timing["durations"])
+        max_dur = max(timing["durations"])
+        p95 = statistics.quantiles(timing["durations"], n=20)[-1] if len(timing["durations"]) >= 2 else timing["durations"][0]
+        avg_q = sum(timing["queue_waits"]) / max(1, len(timing["queue_waits"]))
+        log.info(
+            f"[{engine_name}#{run_id}] SUMMARY variants={len(variants)} "
+            f"wall={wall:.2f}s sum_dur={sum_dur:.2f}s max_dur={max_dur:.2f}s "
+            f"p95_var={p95:.2f}s avg_queue_wait={avg_q:.2f}s "
+            f"(max_var_conc={max_variant_concurrency})"
+        )
+    else:
+        log.info(f"[{engine_name}#{run_id}] SUMMARY variants={len(variants)} wall={wall:.2f}s (no variants)")
 
     flat = [x for b in pages if b for x in b][:limit]
-    return _postprocess_to_SearchResult(flat, filter_list)
+    return _postprocess_to_SearchResult(flat, filter_list) 

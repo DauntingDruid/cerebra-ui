@@ -433,7 +433,6 @@ async def chat_web_search_handler(
                     # Invoked when bypass embedding and retrieval is set to True
                     # docs = results["docs"]
 
-                    # === logs ===
                     urls = results.get("filenames") or []
                     docs = results.get("docs") or []
 
@@ -453,14 +452,13 @@ async def chat_web_search_handler(
                             content = d or ""
 
                         content_str = content if isinstance(content, str) else str(content or "")
-                        preview = safe_preview(content_str, 800)
+                        preview = safe_preview(content_str, 10)
 
                         try:
                             log.info("[web_search] DOC#%d url=%s len=%d preview=%s",
                                     i + 1, u, len(content_str), preview)
                         except Exception as e:
                             log.exception("log preview failed: %s", e)
-                    # === logs ===
 
 
                     if len(docs) == len(results["filenames"]):

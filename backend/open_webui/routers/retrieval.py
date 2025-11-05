@@ -4,15 +4,18 @@ import mimetypes
 import os
 import shutil
 
-import uuid
+import uuid, statistics
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator, List, Optional, Sequence, Union, Dict, Any
 
 from pydantic import BaseModel, Field
 
-from urllib.parse import urlparse
 from collections import defaultdict
+from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from typing import List, Dict, Any, Tuple, Set
+
+import re
 
 import asyncio
 import inspect
@@ -1288,6 +1291,8 @@ class WebSearchLinksForm(BaseModel):
     filter_list: List[str] = Field(default_factory=list, example=[])
     extra: Dict[str, Any] = Field(default_factory=dict, example={})
 
+log = logging.getLogger("web.search")
+
 def _read_persistent(cfg_item):
     if hasattr(cfg_item, "get"):
         try:
@@ -1434,18 +1439,60 @@ def _sanitize_mode(s: str | None) -> str:
 
 MIN_OK_LEN = 500
 
-def _amp_variants(u: str) -> list[str]:
-    out = []
-    if not u.endswith("/amp"):
-        out.append(u.rstrip("/") + "/amp")
-    if "npr.org" in u and "outputType=amp" not in u:
-        sep = "&" if "?" in u else "?"
-        out.append(u + f"{sep}outputType=amp")
-    dedup, seen = [], set()
-    for x in out:
-        if x not in seen:
-            dedup.append(x); seen.add(x)
-    return dedup
+def _normalize_url(u: str) -> str:
+    if not u:
+        return ""
+    try:
+        p = urlparse(u)
+        q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=True)
+             if k.lower() not in {"utm_source","utm_medium","utm_campaign","utm_term","utm_content","gclid"}]
+        p = p._replace(fragment="", query=urlencode(q, doseq=True))
+        return urlunparse(p)
+    except Exception:
+        return u.split("#")[0]
+
+_PDF_POSITIVE = re.compile(r'(?i)(^|\s)(?<!-)(?:filetype|ext)\s*:\s*pdf\b')
+
+def _to_r2_query(q: str) -> str:
+
+    q2 = _PDF_POSITIVE.sub(' ', q or '')
+    q2 = re.sub(r'\s+', ' ', q2).strip()
+
+    if '-filetype:pdf' not in q2.lower():
+        q2 = f'{q2} -filetype:pdf'
+    return q2
+
+def _make_variants(q: str, n: int = 2) -> List[str]:
+    base = (q or '').strip()
+    if not base:
+        return []
+    cands = [
+        base,  
+        _to_r2_query(base),  
+        f'"{base}"',
+        f'{base} site:dev.to OR site:medium.com',
+    ]
+    out, seen = [], set()
+    for v in cands:
+        if v not in seen:
+            seen.add(v); out.append(v)
+        if len(out) >= max(1, n):
+            break
+    return out
+
+MIN_OK_LEN = 400 
+ANTI_BOT_KEYWORDS = (
+    "captcha", "verify you are human", "checking your browser",
+    "access denied", "forbidden", "just a moment", "cloudflare",
+    "akamai", "perimeterx"
+)
+
+def _looks_bot_blocked_text(text: str) -> bool:
+    t = (text or "").lower()
+    if len(t) < MIN_OK_LEN:
+        return True
+    return any(k in t for k in ANTI_BOT_KEYWORDS)
+
 
 async def _fetch_one_with_crawl4ai_fallback(
     request: Request,
@@ -1457,45 +1504,27 @@ async def _fetch_one_with_crawl4ai_fallback(
     trust_env: bool,
 ):
     try:
-        docs = await _crawl4ai_fetch_docs(request, [url], timeout_sec=timeout_s, concurrency=1, user_agent=user_agent)
-        if docs and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
-            content = (docs[0].page_content or "").strip()
-            if len(content) >= MIN_OK_LEN:
-                return docs[0]
-            else:
-                raise RuntimeError(f"crawl4ai content too short: {len(content)}")
-        raise RuntimeError("crawl4ai empty")
+        docs = await _crawl4ai_fetch_docs(
+            request, [url],
+            timeout_sec=timeout_s,
+            concurrency=1,
+            user_agent=user_agent,
+        )
+        if not docs or not docs[0] or not getattr(docs[0], "metadata", None) or not docs[0].metadata.get("source"):
+            log.debug("[crawl4ai-only] empty -> skip url=%s", url)
+            return None
+
+        content = (docs[0].page_content or "").strip()
+
+        if _looks_bot_blocked_text(content):
+            log.info("[antibot] blocked/too-short -> skip url=%s len=%s", url, len(content))
+            return None
+
+        return docs[0]
+
     except Exception as e:
-        log.debug("[crawl4ai] %s -> simple loader", e)
-
-    try:
-        loader = get_web_loader([url], verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
-        docs = await loader.aload()
-        if docs and getattr(docs[0], "metadata", None) and docs[0].metadata.get("source"):
-            content = (docs[0].page_content or "").strip()
-            if len(content) >= MIN_OK_LEN:
-                return docs[0]
-            else:
-                log.debug("[simple loader] short content=%s -> try AMP", len(content))
-        else:
-            log.debug("[simple loader] empty -> try AMP")
-    except Exception as e:
-        log.debug("[simple loader] %s -> try AMP", e)
-
-    for amp in _amp_variants(url)[:2]:
-        try:
-            loader = get_web_loader([amp], verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
-            docs = await loader.aload()
-            if docs and getattr(docs[0], "page_content", None):
-                content = docs[0].page_content.strip()
-                if len(content) >= MIN_OK_LEN:
-                    docs[0].metadata["source"] = url
-                    docs[0].metadata["via"] = amp
-                    return docs[0]
-        except Exception as e:
-            log.debug("[amp] %s fail: %s", amp, e)
-
-    return None
+        log.debug("[crawl4ai-only] %s -> skip url=%s", e, url)
+        return None
 
 
 async def _engine_search_links(
@@ -1558,6 +1587,7 @@ async def search_web_async(
     limit: Optional[int] = None,
     page_size: Optional[int] = None,
     max_conc: Optional[int] = None,
+    run_id: Optional[str] = None,
 ) -> List[SearchResult]:
     cfg = request.app.state.config
     if engine not in ENGINES:
@@ -1579,8 +1609,10 @@ async def search_web_async(
     filter_list = request.app.state.config.WEB_SEARCH_DOMAIN_FILTER_LIST
 
     expected_pages = (limit + page_size - 1) // page_size
-    log.info("[search_async] engine=%s q=%r limit=%s page_size=%s -> pages=%s max_conc=%s",
-             engine, query, limit, page_size, expected_pages, max_conc)
+
+    rid = run_id or uuid.uuid4().hex[:6]
+    log.info("[search_async#%s] engine=%s q=%r limit=%s page_size=%s -> pages=%s max_conc=%s",
+             rid, engine, query, limit, page_size, expected_pages, max_conc)
 
     results = await _engine_search_links(
         request, engine, query,
@@ -1590,7 +1622,7 @@ async def search_web_async(
 
     if len(results) > limit:
         results = results[:limit]
-    log.info("[search_async] engine=%s got %s links (limit=%s)", engine, len(results), limit)
+    log.info("[search_async#%s] engine=%s got %s links (limit=%s)", rid, engine, len(results), limit)
     return results
 
 @router.post("/process/web")
@@ -1666,7 +1698,6 @@ async def process_web_search_links(request: Request, form: WebSearchLinksForm, u
     cfg_engine = form.engine or _read_persistent(getattr(request.app.state.config, "WEB_SEARCH_ENGINE", None))
     engine = (cfg_engine or "").strip().lower()
     if engine not in ALLOWED_ENGINES:
-        log.warning("[search_links] Unsupported engine %r, fallback -> %r", engine, DEFAULT_ENGINE)
         engine = DEFAULT_ENGINE
 
     try:
@@ -1692,19 +1723,20 @@ async def process_web_search_links(request: Request, form: WebSearchLinksForm, u
 @router.post("/process/web/search")
 async def process_web_search(request: Request, form_data: SearchForm, user=Depends(get_verified_user)):
     engine = _effective_engine(request.app.state.config)
-    log.info("[search] engine=%r q=%r limit=%s page_size=%s conc=%s",
-             engine, form_data.query, form_data.limit, form_data.page_size, form_data.concurrency)
-
+    
     eff_limit = int(form_data.limit) if form_data.limit is not None else int(getattr(request.app.state.config, "WEB_SEARCH_RESULT_COUNT", 30) or 30)
     if eff_limit < 1: eff_limit = 1
     if eff_limit > 100: eff_limit = 100
+
+    run_id = uuid.uuid4().hex[:6]
 
     try:
         web_results = await search_web_async(
             request, engine, form_data.query,
             limit=eff_limit,
             page_size=form_data.page_size, 
-            max_conc=form_data.concurrency  
+            max_conc=form_data.concurrency,
+            run_id=run_id, 
         )
     except Exception as e:
         log.exception(e)
@@ -1712,7 +1744,7 @@ async def process_web_search(request: Request, form_data: SearchForm, user=Depen
 
     try:
         urls = [result.link for result in web_results]
-        keep_per_domain = int(getattr(request.app.state.config, "WEB_SEARCH_KEEP_PER_DOMAIN", 0) or 3)
+        keep_per_domain = 3
         urls = dedupe_urls(urls, keep_per_domain=keep_per_domain)
         top_k_fetch = int(getattr(request.app.state.config, "WEB_FETCH_TOP_K", 0) or 15)
         urls = urls[:min(top_k_fetch, eff_limit)]
@@ -1742,23 +1774,179 @@ async def process_web_search(request: Request, form_data: SearchForm, user=Depen
         rps = concurrency
 
         if use_crawl4ai:
+            loop = asyncio.get_running_loop()
+            t0 = loop.time()
             sem = asyncio.Semaphore(concurrency)
-            async def _guarded(u: str):
+
+            durations: list[float] = []
+            queue_waits: list[float] = []
+
+            def _label(i, u):
+                from urllib.parse import urlparse
+                try:
+                    host = urlparse(u).netloc or u
+                except Exception:
+                    host = u
+                return f"u{i}@{host}"
+
+            async def _guarded(i: int, u: str):
+                t_enq = loop.time()
+                log.info(f"[crawl4ai#{run_id}] ENQ  { _label(i,u) } +{t_enq - t0:.2f}s")
+
                 async with sem:
-                    return await _fetch_one_with_crawl4ai_fallback(
-                        request=request, url=u, timeout_s=timeout_s,
-                        user_agent="Open WebUI (Crawl4AI)",
-                        verify_ssl=verify_ssl, rps=rps, trust_env=trust_env,
-                    )
-            docs = await asyncio.gather(*(_guarded(u) for u in urls))
+                    t_acq = loop.time()
+                    qwait = t_acq - t_enq
+                    log.info(f"[crawl4ai#{run_id}] START { _label(i,u) } +{t_acq - t0:.2f}s (queue_wait={qwait:.2f}s)")
+                    try:
+                        doc = await _fetch_one_with_crawl4ai_fallback(
+                            request=request, url=u, timeout_s=timeout_s,
+                            user_agent="Open WebUI (Crawl4AI)",
+                            verify_ssl=verify_ssl, rps=rps, trust_env=trust_env,
+                        )
+                        t_end = loop.time()
+                        dur = t_end - t_acq
+                        ok = bool(doc and getattr(doc, "metadata", None) and doc.metadata.get("source"))
+                        log.info(f"[crawl4ai#{run_id}] DONE  { _label(i,u) } +{t_end - t0:.2f}s (dur={dur:.2f}s ok={ok})")
+                        durations.append(dur)
+                        queue_waits.append(qwait)
+                        return doc
+                    except Exception:
+                        t_end = loop.time()
+                        log.exception(f"[crawl4ai#{run_id}] FAIL  { _label(i,u) } +{t_end - t0:.2f}s")
+                        queue_waits.append(qwait)
+                        return None
+            docs = await asyncio.gather(*(_guarded(i, u) for i, u in enumerate(urls, 1)))
             docs = [d for d in docs if d and getattr(d, "metadata", None) and d.metadata.get("source")]
+        
+            wall = loop.time() - t0
+            if durations:
+                sum_dur = sum(durations)
+                max_dur = max(durations)
+                p95 = statistics.quantiles(durations, n=20)[-1] if len(durations) >= 2 else durations[0]
+                avg_q = sum(queue_waits) / max(1, len(queue_waits))
+                speedup = (sum_dur / wall) if wall > 0 else float('inf')
+                log.info(
+                    f"[crawl4ai#{run_id}] SUMMARY-R1 n={len(urls)} wall={wall:.2f}s "
+                    f"sum_dur={sum_dur:.2f}s max_dur={max_dur:.2f}s "
+                    f"p95={p95:.2f}s avg_queue_wait={avg_q:.2f}s "
+                    f"speedup≈{speedup:.2f}x (concurrency={concurrency})"
+                )
+            else:
+                log.info(f"[crawl4ai#{run_id}] SUMMARY-R1 n={len(urls)} wall={wall:.2f}s (no tasks)")
+
         else:
             loader = get_web_loader(urls, verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
             docs = await loader.aload()
             docs = [d for d in docs if d and getattr(d, "metadata", None) and d.metadata.get("source")]
 
         if not docs:
-            return {"status": True, "collection_name": None, "filenames": [], "loaded_count": 0, "docs": []}
+            tried = {_normalize_url(u) for u in urls}
+
+            variant_queries = _make_variants(form_data.query, n=2)
+            second_urls_all = []
+            for q2 in variant_queries:
+                try:
+                    web_results2 = await search_web_async(
+                        request, engine, q2,
+                        limit=eff_limit,
+                        page_size=form_data.page_size,
+                        max_conc=form_data.concurrency,
+                        run_id=run_id,
+                    )
+                    second_urls_all.extend([r.link for r in web_results2])
+                except Exception as e:
+                    log.warning("[search:R2#%s] requery %r failed: %s", run_id, q2, e)
+
+            second_urls = []
+            for u in second_urls_all:
+                nu = _normalize_url(u)
+                if nu and nu not in tried:
+                    tried.add(nu)
+                    second_urls.append(u)
+
+            second_urls = dedupe_urls(second_urls, keep_per_domain=keep_per_domain)
+            second_urls = second_urls[:min(top_k_fetch, eff_limit)]
+
+            if not second_urls:
+                log.info("[search:R2#%s] no new urls after requery (q=%r)", run_id, form_data.query)
+                return {"status": True, "collection_name": None, "filenames": [], "loaded_count": 0, "docs": []}
+
+            log.info("[search:R2#%s] q=%r new_urls=%d (after requery)", run_id, form_data.query, len(second_urls))
+
+            if use_crawl4ai:
+                loop2 = asyncio.get_running_loop()
+                t0_2 = loop2.time()
+                sem2 = asyncio.Semaphore(concurrency)
+
+                durations2: list[float] = []
+                queue_waits2: list[float] = []
+
+                def _label2(i, u):
+                    from urllib.parse import urlparse
+                    try:
+                        host = urlparse(u).netloc or u
+                    except Exception:
+                        host = u
+                    return f"r2u{i}@{host}"
+
+                async def _guarded_r2(i: int, u: str):
+                    t_enq = loop2.time()
+                    log.info(f"[crawl4ai#{run_id}] ENQ  { _label2(i,u) } +{t_enq - t0_2:.2f}s")
+
+                    async with sem2:
+                        t_acq = loop2.time()
+                        qwait = t_acq - t_enq
+                        log.info(f"[crawl4ai#{run_id}] START { _label2(i,u) } +{t_acq - t0_2:.2f}s (queue_wait={qwait:.2f}s)")
+                        try:
+                            doc = await _fetch_one_with_crawl4ai_fallback(
+                                request=request, url=u, timeout_s=timeout_s,
+                                user_agent="Open WebUI (Crawl4AI)",
+                                verify_ssl=verify_ssl, rps=rps, trust_env=trust_env,
+                            )
+                            t_end = loop2.time()
+                            dur = t_end - t_acq
+                            ok = bool(doc and getattr(doc, "metadata", None) and doc.metadata.get("source"))
+                            log.info(f"[crawl4ai#{run_id}] DONE  { _label2(i,u) } +{t_end - t0_2:.2f}s (dur={dur:.2f}s ok={ok})")
+                            durations2.append(dur)
+                            queue_waits2.append(qwait)
+                            return doc
+                        except Exception:
+                            t_end = loop2.time()
+                            log.exception(f"[crawl4ai#{run_id}] FAIL  { _label2(i,u) } +{t_end - t0_2:.2f}s")
+                            queue_waits2.append(qwait)
+                            return None
+                        
+                docs2 = await asyncio.gather(*(_guarded_r2(i, u) for i, u in enumerate(second_urls, 1)))
+                docs2 = [d for d in docs2 if d and getattr(d, "metadata", None) and d.metadata.get("source")]
+            
+                wall2 = loop2.time() - t0_2
+
+                if durations2:
+                    sum_dur2 = sum(durations2)
+                    max_dur2 = max(durations2)
+                    p95_2 = statistics.quantiles(durations2, n=20)[-1] if len(durations2) >= 2 else durations2[0]
+                    avg_q2 = sum(queue_waits2) / max(1, len(queue_waits2))
+                    speedup2 = (sum_dur2 / wall2) if wall2 > 0 else float('inf')
+                    log.info(
+                        f"[crawl4ai#{run_id}] SUMMARY-R2 n={len(second_urls)} wall={wall2:.2f}s "
+                        f"sum_dur={sum_dur2:.2f}s max_dur={max_dur2:.2f}s "
+                        f"p95={p95_2:.2f}s avg_queue_wait={avg_q2:.2f}s "
+                        f"speedup≈{speedup2:.2f}x (concurrency={concurrency})"
+                    )
+                else:
+                    log.info(f"[crawl4ai#{run_id}] SUMMARY-R2 n={len(second_urls)} wall={wall2:.2f}s (no tasks)")
+
+            else:
+                loader2 = get_web_loader(second_urls, verify_ssl=verify_ssl, requests_per_second=rps, trust_env=trust_env)
+                docs2 = await loader2.aload()
+                docs2 = [d for d in docs2 if d and getattr(d, "metadata", None) and d.metadata.get("source")]
+
+            if not docs2:
+                log.info("[search:R2#%s] fetched 0 docs from %d new urls", run_id, len(second_urls))
+                return {"status": True, "collection_name": None, "filenames": [], "loaded_count": 0, "docs": []}
+
+            docs = docs2
+            urls = [d.metadata["source"] for d in docs]
 
         if bypass:
             if len(docs) > eff_limit:
