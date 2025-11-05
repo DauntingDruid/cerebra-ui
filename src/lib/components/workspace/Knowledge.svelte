@@ -98,7 +98,6 @@
 		</div>
 
 		<div class=" flex items-center w-full space-x-5">
-			<!-- 搜索框 - 固定宽度 -->
 			<div class="flex items-center w-64 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition">
 				<div class=" self-center ml-3 mr-2">
 					<Search className="size-5" />
@@ -110,9 +109,7 @@
 				/>
 			</div>
 
-			<!-- 功能按钮组 - 紧凑排列 -->
 			<div class="flex items-center space-x-2">
-				<!-- + 图标按钮 -->
 				<button
 					class=" px-3 py-3 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200 transition font-medium text-sm flex items-center space-x-1"
 					aria-label={$i18n.t('Create Knowledge')}
@@ -134,7 +131,6 @@
 				<div class="flex flex-col w-full overflow-hidden mt-0.5 mb-0.5">
 					<div class="text-left w-full">
 						<div class="flex flex-col w-full overflow-hidden">
-							<!-- 第一行：图标 + 名称 -->
 							<div class="flex items-center gap-2 mb-1">
 								{#if item?.meta?.document}
 									<svg class="w-5 h-5 text-gray-900 dark:text-gray-100 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +147,6 @@
 								</div>
 							</div>
 							
-							<!-- 第二行：Description -->
 							<div class=" text-xs text-gray-400 dark:text-gray-500 line-clamp-1">
 								{item.description}
 							</div>

@@ -73,14 +73,6 @@
               href="/admin/functions">{$i18n.t('Functions')}</a
             >
 
-            <!-- NEW: Workflows tab -->
-            <a
-              class="min-w-fit rounded-full p-2 {$page.url.pathname.includes('/admin/workflows')
-                ? ''
-                : 'text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
-              href="/admin/workflows">{$i18n.t('Workflows')}</a
-            >
-
             <a
               class="min-w-fit rounded-full p-2 {$page.url.pathname.includes('/admin/settings')
                 ? ''

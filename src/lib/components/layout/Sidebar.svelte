@@ -1,74 +1,63 @@
 <script lang="ts">
-	// ========================= 概览 =========================
-	// 这是 WebUI 左侧栏（Sidebar）的 Svelte 组件：
-	// 1) 负责渲染左侧导航（搜索、功能入口、频道、会话、设置、用户菜单）。
-	// 2) 负责加载数据（文件夹/会话/频道/置顶会话/标签），并处理滚动分页和搜索。
-	// 3) 负责移动端交互（点击遮罩收起、边缘滑动手势）。
-	// 4) 管理若干全局状态（通过 $lib/stores 提供的 Svelte store）。
-	// -------------------------------------------------------
+	import { toast } from 'svelte-sonner';
+	import { v4 as uuidv4 } from 'uuid';
 
-	import { toast } from 'svelte-sonner'; // 轻量通知提示
-	import { v4 as uuidv4 } from 'uuid'; // 生成临时文件夹用的随机 id
-
-	import { goto } from '$app/navigation'; // SvelteKit 的前端路由跳转
+	import { goto } from '$app/navigation';
 	import {
-		user, // 当前登录用户信息（含头像、姓名、权限等）
-		chats, // 左侧栏展示的对话列表（带时间分组）
-		settings, // 全局设置（本组件只在底部按钮里打开设置弹窗用到 showSettings）
-		showSettings, // 控制设置弹窗的开关
-		chatId, // 当前选中的聊天 id（进入聊天页面时会设置）
-		tags, // 标签集合（搜索为空时默认加载）
-		showSidebar, // 是否展示侧边栏（桌面端固定，移动端可开关）
-		mobile, // 是否为移动端视图（由窗口宽度 < BREAKPOINT 计算）
-		showArchivedChats, // 归档会话弹窗开关
-		pinnedChats, // 置顶的会话列表
-		scrollPaginationEnabled, // 是否启用滚动分页（靠近底部会自动加载下一页）
-		currentChatPage, // 当前会话分页页码
-		temporaryChatEnabled, // 是否处于“临时会话”模式（开启时侧栏内容不可操作）
-		channels, // 频道列表
-		socket, // 与服务端的 socket 连接（用于加入频道等）
-		config, // 站点配置（是否启用频道等开关）
-		isApp // 是否为桌面 App 容器（影响样式/拖拽区域）
+		user,
+		chats,
+		settings,
+		showSettings,
+		chatId,
+		tags,
+		showSidebar,
+		mobile,
+		showArchivedChats,
+		pinnedChats,
+		scrollPaginationEnabled,
+		currentChatPage,
+		temporaryChatEnabled,
+		channels,
+		socket,
+		config,
+		isApp
 	} from '$lib/stores';
 	import { onMount, getContext, tick, onDestroy } from 'svelte';
 
-	// 从上层 Context 取多语言实例（i18n.t('Key') 做文案本地化）
 	const i18n: any = getContext('i18n');
 
-	// —— 调用后端接口的函数 ——
 	import {
-		deleteChatById, // 本文件未直接使用：删除会话
-		getChatList, // 获取会话列表（分页）
-		getAllTags, // 获取标签列表
-		getChatListBySearchText, // 根据搜索词获取会话列表
-		createNewChat, // 本文件未直接使用：创建新会话
-		getPinnedChatList, // 获取置顶会话
-		toggleChatPinnedStatusById, // 切换会话置顶状态
-		getChatPinnedStatusById, // 本文件未直接使用：查询置顶状态
-		getChatById, // 通过 id 拉取单个会话（用于拖拽导入时兜底）
-		updateChatFolderIdById, // 将会话移出文件夹 / 移动到文件夹
-		importChat // 从外部 JSON 导入会话
+		deleteChatById,
+		getChatList,
+		getAllTags,
+		getChatListBySearchText,
+		createNewChat,
+		getPinnedChatList,
+		toggleChatPinnedStatusById,
+		getChatPinnedStatusById,
+		getChatById,
+		updateChatFolderIdById,
+		importChat
 	} from '$lib/apis/chats';
 	import { createNewFolder, getFolders, updateFolderParentIdById } from '$lib/apis/folders';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
-	// ——— 子组件（弹窗/条目/图标等） ———
 	import ArchivedChatsModal from './Sidebar/ArchivedChatsModal.svelte';
 	import UserMenu from './Sidebar/UserMenu.svelte';
 	import ChatItem from './Sidebar/ChatItem.svelte';
 	import Spinner from '../common/Spinner.svelte';
-	import Loader from '../common/Loader.svelte'; // 进入视口时触发 on:visible 用于“无限滚动”
-	import AddFilesPlaceholder from '../AddFilesPlaceholder.svelte'; // 未直接使用
+	import Loader from '../common/Loader.svelte';
+	import AddFilesPlaceholder from '../AddFilesPlaceholder.svelte';
 	import SearchInput from './Sidebar/SearchInput.svelte';
-	import Folder from '../common/Folder.svelte'; // 可折叠分区容器
-	import Plus from '../icons/Plus.svelte'; // 未直接使用
-	import Tooltip from '../common/Tooltip.svelte'; // 未直接使用
-	import Folders from './Sidebar/Folders.svelte'; // 文件夹树
+	import Folder from '../common/Folder.svelte';
+	import Plus from '../icons/Plus.svelte';
+	import Tooltip from '../common/Tooltip.svelte';
+	import Folders from './Sidebar/Folders.svelte';
 	import { getChannels, createNewChannel } from '$lib/apis/channels';
 	import ChannelModal from './Sidebar/ChannelModal.svelte';
 	import ChannelItem from './Sidebar/ChannelItem.svelte';
-	import PencilSquare from '../icons/PencilSquare.svelte'; // 新建对话按钮图标
-	import Home from '../icons/Home.svelte'; // 预留的"主页"入口图标（已注释）
+	import PencilSquare from '../icons/PencilSquare.svelte';
+	import Home from '../icons/Home.svelte';
 	
 	// Icon components
 	import CerebraLogo from '$lib/components/icons/CerebraLogo.svelte';
@@ -81,29 +70,23 @@
 	import SearchIcon from '$lib/components/icons/SearchIcon.svelte';
 	import UserIcon from '$lib/components/icons/UserIcon.svelte';
 
-	// —— 响应式断点：小于 768px 视作移动端 ——
 	const BREAKPOINT = 768;
 
-	// —— 本组件内部的局部状态 ——
-	let navElement; // 侧栏根节点 DOM（设置拖拽区域用）
-	let search = ''; // 搜索框输入值（防抖请求）
+	let navElement;
+	let search = '';
 
-	let shiftKey = false; // 是否按住 Shift（支持多选/批量操作时常用，这里用于 ChatItem 的 UI）
-	let selectedChatId: string | null = null; // 当前在列表里“被点选”的会话（用于右键/操作）
-	let showDropdown = false; // 用户菜单下拉是否展开
-	let showPinnedChat = true; // 置顶会话分组是否展开（记忆到 localStorage）
-	let showCreateChannel = false; // 创建频道的弹窗
+	let shiftKey = false;
+	let selectedChatId: string | null = null;
+	let showDropdown = false;
+	let showPinnedChat = true;
+	let showCreateChannel = false;
 
-	// —— 会话分页相关 ——
-	let chatListLoading = false; // 是否正在拉取下一页
-	let allChatsLoaded = false; // 是否已经没有更多会话
+	let chatListLoading = false;
+	let allChatsLoaded = false;
 
-	// —— 文件夹相关数据结构 ——
-	// folders 是一个对象（id -> folderData），并且给父文件夹挂 childrenIds 数组
 	let folders: Record<string, any> = {};
-	let newFolderId: string | null = null; // 用于创建后高亮“新文件夹”
+	let newFolderId: string | null = null;
 
-	// 初始化文件夹树：两次遍历，第一次建立所有节点，第二次串起父子关系
 	const initFolders = async () => {
 		const folderList = await getFolders(localStorage.token).catch((error) => {
 			toast.error(`${error}`);
@@ -112,18 +95,15 @@
 
 		folders = {};
 
-		// 第一次：把每个 folder 的基本数据写入 folders 映射
 		for (const folder of folderList) {
 			folders[folder.id] = { ...(folders[folder.id] || {}), ...folder };
 
-			// 如果刚创建完成，打上 new 标记（用于 UI 高亮）
 			if (newFolderId && folder.id === newFolderId) {
 				folders[folder.id].new = true;
 				newFolderId = null;
 			}
 		}
 
-		// 第二次：把子文件夹 id 收集到父文件夹的 childrenIds，并按更新时间排序
 		for (const folder of folderList) {
 			if (folder.parent_id) {
 				if (!folders[folder.parent_id]) {
@@ -140,8 +120,6 @@
 		}
 	};
 
-	// 创建根级文件夹：
-	// 1) 名称为空则报错；2) 与现有重名则自动加序号；3) 先用临时 id 乐观更新，后端成功再刷新
 	const createFolder = async (name = 'Untitled') => {
 		if (name === '') {
 			toast.error($i18n.t('Folder name cannot be empty.'));
@@ -157,7 +135,6 @@
 			name = `${name} ${i}`;
 		}
 
-		// 乐观 UI：先塞一个“临时文件夹”，让用户感知马上创建了
 		const tempId = uuidv4();
 		folders = {
 			...folders,
@@ -175,20 +152,16 @@
 		});
 
 		if (res) {
-			newFolderId = res.id; // 让新建的文件夹高亮
+			newFolderId = res.id;
 			await initFolders();
 		}
 	};
 
-	// 频道初始化：拉取频道列表并写入 store
 	const initChannels = async () => {
 		await channels.set(await getChannels(localStorage.token));
 	};
 
-	// 会话列表初始化：
-	// 1) 重置分页；2) 先拉标签/置顶/文件夹；3) 根据是否有搜索词拉第一页；4) 启用滚动分页
 	const initChatList = async () => {
-		// 重置 + 预取
 		tags.set(await getAllTags(localStorage.token));
 		pinnedChats.set(await getPinnedChatList(localStorage.token));
 		initFolders();
@@ -202,11 +175,9 @@
 			await chats.set(await getChatList(localStorage.token, $currentChatPage));
 		}
 
-		// 开启分页（底部 Loader 进入视口时会触发 loadMoreChats）
 		scrollPaginationEnabled.set(true);
 	};
 
-	// 滚动加载下一页
 	const loadMoreChats = async () => {
 		chatListLoading = true;
 		currentChatPage.set($currentChatPage + 1);
@@ -218,17 +189,15 @@
 			newChatList = await getChatList(localStorage.token, $currentChatPage);
 		}
 
-		// 如果返回 0 条则标记“已全部加载”
 		allChatsLoaded = newChatList.length === 0;
 		await chats.set([...($chats ? $chats : []), ...newChatList]);
 		chatListLoading = false;
 	};
 
-	// 搜索输入防抖：1s 不输入就发请求；清空则恢复默认列表
 	let searchDebounceTimeout: any;
 	const searchDebounceHandler = async () => {
 		console.log('search', search);
-		chats.set(null); // 置空先显示 Loading
+		chats.set(null);
 
 		if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
 
@@ -241,7 +210,6 @@
 				currentChatPage.set(1);
 				await chats.set(await getChatListBySearchText(localStorage.token, search));
 
-				// 若无结果，刷新一次标签，方便用户做二次筛选
 				if ($chats.length === 0) {
 					tags.set(await getAllTags(localStorage.token));
 				}
@@ -249,7 +217,6 @@
 		}
 	};
 
-	// 批量导入会话（支持从 JSON 文件/拖拽导入）
 	const importChatHandler = async (items, pinned = false, folderId: string | null = null) => {
 		console.log('importChatHandler', items, pinned, folderId);
 		for (const item of items) {
@@ -257,10 +224,9 @@
 				await importChat(localStorage.token, item.chat, item?.meta ?? {}, pinned, folderId);
 			}
 		}
-		initChatList(); // 刷新侧栏
+		initChatList();
 	};
 
-	// 处理拖拽进来的文件（JSON）
 	const inputFilesHandler = async (files: File[]) => {
 		for (const file of files) {
 			const reader = new FileReader();
@@ -277,15 +243,13 @@
 		}
 	};
 
-	// 监听标签增删后，刷新会话列表（保持和后台一致）
 	const tagEventHandler = async (type, tagName, chatId) => {
 		if (type === 'delete' || type === 'add') {
 			initChatList();
 		}
 	};
 
-	// —— 拖拽进入侧栏的视觉反馈 ——
-	let draggedOver = false; // 是否有“文件”拖入（只对文件给出高亮）
+	let draggedOver = false;
 	const onDragOver = (e: DragEvent) => {
 		e.preventDefault();
 		draggedOver = !!e.dataTransfer?.types?.includes('Files');
@@ -302,35 +266,28 @@
 		draggedOver = false;
 	};
 
-	// —— 移动端边缘滑动：从屏幕左缘左右滑，开/关侧栏 ——
 	let touchstart: Touch; let touchend: Touch;
 	function checkDirection() {
 		const screenWidth = window.innerWidth;
 		const swipeDistance = Math.abs(touchend.screenX - touchstart.screenX);
-		// 仅当从左侧 40px 内开始滑，并且滑动距离 >= 屏宽 1/8 时生效
 		if (touchstart.clientX < 40 && swipeDistance >= screenWidth / 8) {
-			if (touchend.screenX < touchstart.screenX) showSidebar.set(false); // 左滑关闭
-			if (touchend.screenX > touchstart.screenX) showSidebar.set(true);  // 右滑打开
+			if (touchend.screenX < touchstart.screenX) showSidebar.set(false);
+			if (touchend.screenX > touchstart.screenX) showSidebar.set(true);
 		}
 	}
 	const onTouchStart = (e: TouchEvent) => { touchstart = e.changedTouches[0]; };
 	const onTouchEnd = (e: TouchEvent) => { touchend = e.changedTouches[0]; checkDirection(); };
 
-	// —— 键盘事件：仅用于记录是否按住 Shift ——
 	const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftKey = true; };
 	const onKeyUp = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftKey = false; };
 	const onFocus = () => {};
 	const onBlur = () => { shiftKey = false; selectedChatId = null; };
 
-	// —— 生命周期：挂载时初始化、注册事件；卸载时清理 ——
 	onMount(async () => {
-		// 读取“置顶分组是否展开”的记忆
 		showPinnedChat = localStorage?.showPinnedChat ? localStorage.showPinnedChat === 'true' : true;
 
-		// 根据 mobile 状态决定侧栏显示，以及给 <nav> 设置可拖拽区域（桌面 App 用）
 		mobile.subscribe((value) => {
 			if ($showSidebar && value) {
-				// 当从桌面切到移动端时，收起侧栏（避免遮挡）
 				showSidebar.set(false);
 			}
 			if ($showSidebar && !value) {
@@ -342,7 +299,6 @@
 			}
 		});
 
-		// 初始显示取自本地存储（桌面端记忆展开/收起；移动端默认收起）
 		showSidebar.set(!$mobile ? localStorage.sidebar === 'true' : false);
 		showSidebar.subscribe((value) => {
 			localStorage.sidebar = String(value);
@@ -356,19 +312,16 @@
 			}
 		});
 
-		// 预加载频道 & 会话
 		await initChannels();
 		await initChatList();
 
-		// 全局事件监听
 		window.addEventListener('keydown', onKeyDown);
 		window.addEventListener('keyup', onKeyUp);
 		window.addEventListener('touchstart', onTouchStart);
 		window.addEventListener('touchend', onTouchEnd);
 		window.addEventListener('focus', onFocus);
-		window.addEventListener('blur-sm', onBlur); // 自定义事件名（框架内触发）
+		window.addEventListener('blur-sm', onBlur);
 
-		// 侧栏拖拽导入文件
 		const dropZone = document.getElementById('sidebar');
 		dropZone?.addEventListener('dragover', onDragOver);
 		dropZone?.addEventListener('drop', onDrop);
@@ -376,7 +329,6 @@
 	});
 
 	onDestroy(() => {
-		// 清理所有监听器，避免内存泄漏
 		window.removeEventListener('keydown', onKeyDown);
 		window.removeEventListener('keyup', onKeyUp);
 		window.removeEventListener('touchstart', onTouchStart);
@@ -449,7 +401,7 @@
 			<button
 				class=" flex items-center rounded-xl px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-900 transition"
 				on:click={() => {
-					// 点击 Logo + 文本切换侧边栏展开/折叠
+
 					showSidebar.set(!$showSidebar);
 				}}
 				aria-label="Toggle Sidebar"
@@ -507,7 +459,6 @@
 			</div>
 		{/if} -->
 
-		<!-- Workspace 快捷入口移除，改为 Features 分区中的具体项 -->
 
 		<div class="relative mt-4{$temporaryChatEnabled ? 'opacity-20' : ''}">
 			{#if $temporaryChatEnabled}
@@ -902,7 +853,6 @@
 </div>
 
 <style>
-	/* 隐藏滚动条拇指，只有 hover/focus/active 时可见，避免视觉噪点 */
 	.scrollbar-hidden:active::-webkit-scrollbar-thumb,
 	.scrollbar-hidden:focus::-webkit-scrollbar-thumb,
 	.scrollbar-hidden:hover::-webkit-scrollbar-thumb { visibility: visible; }

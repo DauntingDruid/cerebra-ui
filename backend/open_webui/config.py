@@ -2056,7 +2056,7 @@ YOUTUBE_LOADER_PROXY_URL = PersistentConfig(
 ENABLE_WEB_SEARCH = PersistentConfig(
     "ENABLE_WEB_SEARCH",
     "rag.web.search.enable",
-    os.getenv("ENABLE_WEB_SEARCH", "True").lower() == "true",
+    os.getenv("ENABLE_WEB_SEARCH", "False").lower() == "true",
 )
 
 WEB_SEARCH_ENGINE = PersistentConfig(

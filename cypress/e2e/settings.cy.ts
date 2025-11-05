@@ -24,6 +24,8 @@ describe('Settings', () => {
 	context('General', () => {
 		it('user can open the General modal and hit save', () => {
 			cy.get('button').contains('General').click();
+			cy.wait(500);
+			cy.checkAccessibility(); // Check accessibility when modal is open
 			cy.get('button').contains('Save').click();
 		});
 	});

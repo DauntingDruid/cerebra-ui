@@ -88,6 +88,13 @@
 	export let deepResearchEnabled = false;
 	export let codeInterpreterEnabled = false;
 
+	// Reactive: Disable other features when workflows are enabled
+	$: if (selectedWorkflowIds.length > 0 || deepResearchEnabled) {
+		webSearchEnabled = false;
+		imageGenerationEnabled = false;
+		codeInterpreterEnabled = false;
+	}
+
 	$: onChange({
 		prompt,
 		files,
@@ -96,6 +103,7 @@
 		imageGenerationEnabled,
 		webSearchEnabled,
 		deepResearchEnabled,
+		codeInterpreterEnabled,
 	});
 
 	let showTools = false;
@@ -1163,7 +1171,16 @@
 												{#if $config?.features?.enable_web_search && ($_user.role === 'admin' || $_user?.permissions?.features?.web_search)}
 													<Tooltip content={$i18n.t('Search the internet')} placement="top">
 														<button
-															on:click|preventDefault={() => (webSearchEnabled = !webSearchEnabled)}
+															on:click|preventDefault={() => {
+																// Disable other features when enabling web search
+																if (!webSearchEnabled) {
+																	selectedWorkflowIds = [];
+																	deepResearchEnabled = false;
+																	imageGenerationEnabled = false;
+																	codeInterpreterEnabled = false;
+																}
+																webSearchEnabled = !webSearchEnabled;
+															}}
 															type="button"
 															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {webSearchEnabled ||
 															($settings?.webSearch ?? false) === 'always'
@@ -1180,11 +1197,20 @@
 												{/if}
 
 
-												{#if $config?.features?.enable_image_generation && ($_user.role === 'admin' || $_user?.permissions?.features?.image_generation)}
+												<!-- Image button - always visible if feature is enabled -->
+												{#if $config?.features?.enable_image_generation}
 													<Tooltip content={$i18n.t('Generate an image')} placement="top">
 														<button
-															on:click|preventDefault={() =>
-																(imageGenerationEnabled = !imageGenerationEnabled)}
+															on:click|preventDefault={() => {
+																// Disable other features when enabling image generation
+																if (!imageGenerationEnabled) {
+																	selectedWorkflowIds = [];
+																	deepResearchEnabled = false;
+																	webSearchEnabled = false;
+																	codeInterpreterEnabled = false;
+																}
+																imageGenerationEnabled = !imageGenerationEnabled;
+															}}
 															type="button"
 															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {imageGenerationEnabled
 																? 'bg-green-100 dark:bg-green-500/20 border-green-400/20 text-green-600 dark:text-green-400'
@@ -1202,8 +1228,16 @@
 												{#if $config?.features?.enable_code_interpreter && ($_user.role === 'admin' || $_user?.permissions?.features?.code_interpreter)}
 													<Tooltip content={$i18n.t('Execute code for analysis')} placement="top">
 														<button
-															on:click|preventDefault={() =>
-																(codeInterpreterEnabled = !codeInterpreterEnabled)}
+															on:click|preventDefault={() => {
+																// Disable other features when enabling code interpreter
+																if (!codeInterpreterEnabled) {
+																	selectedWorkflowIds = [];
+																	deepResearchEnabled = false;
+																	webSearchEnabled = false;
+																	imageGenerationEnabled = false;
+																}
+																codeInterpreterEnabled = !codeInterpreterEnabled;
+															}}
 															type="button"
 															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {codeInterpreterEnabled
 																? 'bg-orange-100 dark:bg-orange-500/20 border-orange-400/20 text-orange-600 dark:text-orange-400'
@@ -1218,7 +1252,6 @@
 													</Tooltip>
 												{/if}
 
-												<!-- Workflow Button - 已暂时注释掉 -->
 												<!-- 
 												{#if $_user.role === 'admin'}
 													<WorkflowMenu

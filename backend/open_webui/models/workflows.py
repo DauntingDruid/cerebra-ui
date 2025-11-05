@@ -112,7 +112,7 @@ class WorkflowCredentialModel(BaseModel):
 
 class WorkflowCredentialForm(BaseModel):
     service_name: str = Field(..., min_length=1, max_length=100)
-    api_key: str = Field(..., min_length=1)  # will be encrypted at rest
+    api_key: Optional[str] = None  # will be encrypted at rest, None for updates if not changing
     endpoint_url: Optional[str] = None
     additional_config: Optional[Dict[str, Any]] = None
 
@@ -301,6 +301,35 @@ class WorkflowCredentials:
             except Exception:
                 pass
         return cred
+
+    @staticmethod
+    def update_credential(credential_id: str, user_id: str, form_data: WorkflowCredentialForm) -> Optional[WorkflowCredentialModel]:
+        try:
+            cred = Session.query(WorkflowCredential).filter(
+                WorkflowCredential.id == credential_id,
+                WorkflowCredential.user_id == user_id,
+            ).first()
+            if not cred:
+                return None
+
+            # Update fields
+            cred.service_name = form_data.service_name
+            if form_data.api_key:
+                cred.api_key = encrypt_str(form_data.api_key)
+            cred.endpoint_url = form_data.endpoint_url
+            cred.additional_config = _dict_to_json(form_data.additional_config)
+            cred.updated_at = datetime.now()
+
+            Session.commit()
+            Session.refresh(cred)
+
+            model = WorkflowCredentialModel.model_validate(cred)
+            model.additional_config = _json_to_dict(cred.additional_config)
+            return model
+        except Exception as e:
+            print(f"Error updating credential: {e}")
+            Session.rollback()
+            return None
 
     @staticmethod
     def delete_credential(credential_id: str, user_id: str) -> bool:

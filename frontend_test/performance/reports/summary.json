@@ -1,0 +1,73 @@
+{
+  "timestamp": "2025-11-03T15:44:36.654Z",
+  "baseUrl": "http://localhost:3000",
+  "pages": [
+    {
+      "pageName": "Home Page",
+      "url": "http://localhost:3000/",
+      "timestamp": "2025-11-03T15:44:16.449Z",
+      "metrics": {
+        "performance": null,
+        "accessibility": 100,
+        "bestPractices": 96,
+        "seo": 63,
+        "fcp": 381,
+        "lcp": 381,
+        "fid": 46,
+        "cls": 0,
+        "tti": 381,
+        "totalBlockingTime": 0,
+        "speedIndex": null
+      },
+      "reportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/home-page-1762184656444.json",
+      "htmlReportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/home-page-report.html"
+    },
+    {
+      "pageName": "Authentication Page",
+      "url": "http://localhost:3000/auth",
+      "timestamp": "2025-11-03T15:44:25.555Z",
+      "metrics": {
+        "performance": null,
+        "accessibility": 100,
+        "bestPractices": 96,
+        "seo": 63,
+        "fcp": 382,
+        "lcp": 382,
+        "fid": 16,
+        "cls": 0,
+        "tti": 382,
+        "totalBlockingTime": 0,
+        "speedIndex": null
+      },
+      "reportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/authentication-page-1762184665551.json",
+      "htmlReportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/authentication-page-report.html"
+    },
+    {
+      "pageName": "Settings Page",
+      "url": "http://localhost:3000/settings",
+      "timestamp": "2025-11-03T15:44:34.620Z",
+      "metrics": {
+        "performance": null,
+        "accessibility": 100,
+        "bestPractices": 96,
+        "seo": 63,
+        "fcp": 380,
+        "lcp": 380,
+        "fid": 16,
+        "cls": 0,
+        "tti": 380,
+        "totalBlockingTime": 0,
+        "speedIndex": null
+      },
+      "reportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/settings-page-1762184674617.json",
+      "htmlReportPath": "/Users/gujiayi/cerebra-ui/frontend_test/performance/reports/settings-page-report.html"
+    }
+  ],
+  "averages": {
+    "performance": null,
+    "fcp": 381,
+    "lcp": 381,
+    "cls": 0,
+    "tti": 381
+  }
+}
