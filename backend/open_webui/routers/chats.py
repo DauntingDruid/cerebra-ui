@@ -26,6 +26,9 @@ from open_webui.utils.chat_cache import (
     get_cached_chat,
     set_cached_chat,
     touch_recent,
+    delete_chat_cache,
+    remove_from_recent,
+    clear_recent_for_user,
 )
 from open_webui.utils.access_control import has_permission
 
@@ -69,7 +72,23 @@ async def delete_all_user_chats(request: Request, user=Depends(get_verified_user
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
+    # Collect chat ids before deletion so we can invalidate cache items
+    try:
+        user_chats = Chats.get_chats_by_user_id(user.id)
+        chat_ids = [chat.id for chat in user_chats]
+    except Exception:
+        chat_ids = []
+
     result = Chats.delete_chats_by_user_id(user.id)
+
+    # Invalidate cache entries and clear the user's recent list
+    try:
+        for chat_id in chat_ids:
+            delete_chat_cache(request.app, chat_id)
+        clear_recent_for_user(request.app, user.id)
+    except Exception:
+        pass
+
     return result
 
 
@@ -347,7 +366,7 @@ async def get_user_chat_list_by_tag_name(
 
 @router.get("/{id}", response_model=Optional[ChatResponse])
 async def get_chat_by_id(id: str, request: Request, user=Depends(get_verified_user)):
-    # Try cache first
+    # Try REDIS_CHAT_CACHE first
     cached = get_cached_chat(request.app, id)
     if cached:
         try:
@@ -358,6 +377,7 @@ async def get_chat_by_id(id: str, request: Request, user=Depends(get_verified_us
 
     chat = Chats.get_chat_by_id_and_user_id(id, user.id)
 
+    # If chat is not found in REDIS_CHAT_CACHE, try the database
     if chat:
         response = ChatResponse(**chat.model_dump())
         try:
@@ -509,7 +529,13 @@ async def delete_chat_by_id(request: Request, id: str, user=Depends(get_verified
                 Tags.delete_tag_by_name_and_user_id(tag, user.id)
 
         result = Chats.delete_chat_by_id(id)
-
+        # Invalidate cache snapshot and remove from the owner's recent list
+        try:
+            delete_chat_cache(request.app, id)
+            if chat and getattr(chat, "user_id", None):
+                remove_from_recent(request.app, chat.user_id, id)
+        except Exception:
+            pass
         return result
     else:
         if not has_permission(
@@ -526,6 +552,12 @@ async def delete_chat_by_id(request: Request, id: str, user=Depends(get_verified
                 Tags.delete_tag_by_name_and_user_id(tag, user.id)
 
         result = Chats.delete_chat_by_id_and_user_id(id, user.id)
+        # Invalidate cache snapshot and remove from this user's recent list
+        try:
+            delete_chat_cache(request.app, id)
+            remove_from_recent(request.app, user.id, id)
+        except Exception:
+            pass
         return result
 
 

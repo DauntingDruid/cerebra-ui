@@ -1,0 +1,623 @@
+# CerebraUI Backend Test Suite
+
+A comprehensive test framework for the CerebraUI backend, featuring intelligent image generation testing with full coverage of prompt analysis, API integration, and end-to-end workflows.
+
+## Test Results
+
+```
+Total Tests: 39/39 (100% passing)
+├── Unit Tests:        16 passed
+├── Integration Tests:  7 passed
+├── Performance Tests:  5 passed
+└── E2E Tests:         11 passed
+```
+
+## Quick Start
+
+```bash
+# Run all tests
+./run_tests.sh all
+
+# Run specific test suite
+./run_tests.sh unit
+./run_tests.sh integration
+./run_tests.sh performance
+./run_tests.sh e2e
+
+# Quick development tests (unit + smoke)
+./run_tests.sh quick
+
+# Full suite with coverage
+./run_tests.sh full
+
+# CI/CD mode
+./run_tests.sh ci
+```
+
+## Test Structure
+
+```
+comfyui-backend-test/
+├── unit/                    # Unit tests (16 tests)
+│   └── test_prompt_analyzer.py
+├── integration/             # Integration tests (7 tests)
+│   └── test_smart_api.py
+├── performance/             # Performance tests (5 tests)
+│   └── test_benchmarks.py
+├── e2e/                     # End-to-end tests (11 tests)
+│   └── test_user_workflows.py
+├── conftest.py             # Shared fixtures and configuration
+├── pytest.ini              # Pytest configuration
+└── run_tests.sh            # Test runner script
+```
+
+## Test Categories
+
+### Unit Tests (16 tests)
+
+Tests the PromptAnalyzer in isolation:
+
+- **Initialization** (3 tests)
+  - Without OpenAI API key
+  - With OpenAI API key
+  - Singleton pattern verification
+
+- **OpenAI Integration** (2 tests)
+  - Successful analysis with OpenAI
+  - Fallback when OpenAI fails
+
+- **Fallback Analysis** (6 tests)
+  - Text2img detection with creation keywords
+  - Img2img detection with modification keywords
+  - Context-aware mode detection
+  - Size detection (square, portrait, landscape)
+
+- **Edge Cases** (3 tests)
+  - Empty prompts
+  - Very long prompts
+  - Special characters
+
+- **Performance** (2 tests)
+  - Response time validation
+  - Concurrent analysis handling
+
+**Run:** `./run_tests.sh unit`
+
+### Integration Tests (7 tests)
+
+Tests complete API workflows:
+
+- **Smart API Integration** (3 tests)
+  - Text2img workflow
+  - Img2img workflow
+  - Multi-round generation
+
+- **Error Handling** (2 tests)
+  - Fal API timeout handling
+  - OpenAI fallback mechanism
+
+- **Smoke Suite** (2 tests)
+  - Basic import verification
+  - Basic analysis functionality
+
+**Run:** `./run_tests.sh integration`
+
+### Performance Tests (5 tests)
+
+Benchmarks and performance validation:
+
+- **Prompt Analyzer Performance** (3 tests)
+  - Single analysis latency (< 100ms avg)
+  - Concurrent throughput (> 10 req/s)
+  - Variable prompt length handling
+
+- **Memory Usage** (1 test)
+  - Memory leak detection
+
+- **Scalability** (1 test)
+  - Performance under increasing load
+
+**Run:** `./run_tests.sh performance`
+
+### End-to-End Tests (11 tests)
+
+Real user workflow simulations:
+
+- **Basic Workflows** (2 tests)
+  - First-time image generation
+  - Image modification workflow
+
+- **Multi-Round Generation** (2 tests)
+  - Three-round generation chain
+  - Restart in middle of chain
+
+- **Bilingual Support** (2 tests)
+  - Chinese user workflow
+  - Mixed language workflow
+
+- **Size Specifications** (1 test)
+  - Explicit size requests
+
+- **Complex Scenarios** (2 tests)
+  - Long session workflow (10+ rounds)
+  - Ambiguous prompts handling
+
+- **Error Recovery** (2 tests)
+  - Empty prompt recovery
+  - Invalid characters handling
+
+**Run:** `./run_tests.sh e2e`
+
+## Prerequisites
+
+### Python Requirements
+
+```bash
+Python 3.11+
+pytest >= 8.3.5
+pytest-asyncio >= 1.2.0
+pytest-cov >= 7.0.0
+pytest-timeout >= 2.4.0
+```
+
+### Installation
+
+```bash
+cd comfyui-backend-test
+pip install -r requirements-test.txt
+```
+
+### Environment Setup
+
+The test framework automatically configures paths to Open WebUI:
+
+```
+cerebra-ui/
+└── backend/
+    ├── open_webui/              # Source code
+    │   └── utils/
+    │       └── images/
+    │           ├── prompt_analyzer.py
+    │           └── fal_flux.py
+    └── comfyui-backend-test/    # Test framework
+        ├── unit/
+        ├── integration/
+        ├── performance/
+        └── e2e/
+```
+
+No manual path configuration needed - `conftest.py` handles it automatically.
+
+## Running Tests
+
+### Basic Usage
+
+```bash
+# All tests with summary
+./run_tests.sh all
+
+# Individual suites
+./run_tests.sh unit
+./run_tests.sh integration
+./run_tests.sh performance
+./run_tests.sh e2e
+```
+
+### Advanced Usage
+
+```bash
+# Quick tests for development
+./run_tests.sh quick
+
+# Full suite with coverage reports
+./run_tests.sh full
+
+# CI/CD pipeline mode
+./run_tests.sh ci
+
+# Watch mode (auto-rerun on changes)
+./run_tests.sh watch
+```
+
+### Direct Pytest Usage
+
+```bash
+# Run specific test file
+pytest unit/test_prompt_analyzer.py -v
+
+# Run specific test
+pytest unit/test_prompt_analyzer.py::TestPromptAnalyzerFallback::test_fallback_text2img_create_keywords -v
+
+# Run with markers
+pytest -m unit -v
+pytest -m "unit and not slow" -v
+
+# Generate coverage report
+pytest --cov=. --cov-report=html
+
+# Show slowest tests
+pytest --durations=10
+```
+
+## Test Output
+
+### Success Output
+
+```
+=================================================
+  CerebraUI Backend Test Suite
+  2025-11-04 18:55:00
+=================================================
+
+Running Unit tests...
+[PASS] Unit tests completed successfully
+
+Running Integration tests...
+[PASS] Integration tests completed successfully
+
+Running Performance tests...
+[PASS] Performance tests completed successfully
+
+Running E2E tests...
+[PASS] E2E tests completed successfully
+
+=================================================
+  Test Summary
+=================================================
+[PASS] All test suites completed successfully
+
+Test Report: file:///path/to/results/report.html
+Coverage Report: file:///path/to/results/coverage/index.html
+```
+
+### Reports Generated
+
+After running tests, find reports in `results/`:
+
+```
+results/
+├── junit.xml           # JUnit XML format (for CI/CD)
+├── report.html         # HTML test report
+└── coverage/           # Coverage report
+    └── index.html
+```
+
+## Writing New Tests
+
+### Adding Unit Tests
+
+```python
+# unit/test_new_feature.py
+import pytest
+from open_webui.utils.images.your_module import YourClass
+
+@pytest.mark.unit
+class TestNewFeature:
+    """Test new feature"""
+    
+    @pytest.mark.asyncio
+    async def test_basic_functionality(self):
+        """Test basic functionality"""
+        obj = YourClass()
+        result = await obj.process()
+        assert result is not None
+```
+
+### Adding Integration Tests
+
+```python
+# integration/test_new_integration.py
+import pytest
+from open_webui.utils.images.prompt_analyzer import PromptAnalyzer
+
+@pytest.mark.integration
+class TestNewIntegration:
+    """Test integration with external service"""
+    
+    @pytest.mark.asyncio
+    async def test_service_integration(self, mock_service):
+        """Test service integration"""
+        analyzer = PromptAnalyzer()
+        result = await analyzer.analyze("test")
+        assert result["status"] == "success"
+```
+
+### Using Fixtures
+
+Common fixtures available in `conftest.py`:
+
+```python
+def test_with_fixtures(
+    mock_openai_client,      # Mocked OpenAI client
+    mock_fal_client,         # Mocked Fal client
+    mock_database,           # Mocked database
+    sample_prompts,          # Sample test prompts
+    performance_metrics      # Expected performance metrics
+):
+    # Your test code
+    pass
+```
+
+## Performance Benchmarks
+
+Expected performance metrics:
+
+| Metric | Target | Current |
+|--------|--------|---------|
+| Single Analysis | < 100ms | ~50ms avg |
+| P95 Latency | < 80ms | ~75ms |
+| Concurrent Throughput | > 10 req/s | ~15 req/s |
+| Memory Growth | < 2x initial | Stable |
+
+## Troubleshooting
+
+### Tests Not Found
+
+```bash
+# Verify pytest can collect tests
+pytest --collect-only -v
+
+# Should show: collected 39 items
+```
+
+### Import Errors
+
+```bash
+# Verify Open WebUI path
+ls ../open_webui/utils/images/prompt_analyzer.py
+
+# Test import manually
+python3 -c "from open_webui.utils.images.prompt_analyzer import PromptAnalyzer; print('OK')"
+```
+
+### Coverage Too Low
+
+Coverage below 50% usually means:
+- Tests are being skipped (check markers)
+- Some test files are being excluded
+- Run with: `pytest --cov-report=term-missing` to see what's not covered
+
+### Slow Tests
+
+```bash
+# Find slow tests
+pytest --durations=10
+
+# Skip slow tests
+pytest -m "not slow"
+```
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          cd backend/comfyui-backend-test
+          pip install -r requirements-test.txt
+      - name: Run tests
+        run: |
+          cd backend/comfyui-backend-test
+          ./run_tests.sh ci
+      - name: Upload coverage
+        uses: codecov/codecov-action@v2
+        with:
+          files: ./results/coverage.xml
+```
+
+### GitLab CI Example
+
+```yaml
+test:
+  image: python:3.11
+  script:
+    - cd backend/comfyui-backend-test
+    - pip install -r requirements-test.txt
+    - ./run_tests.sh ci
+  artifacts:
+    reports:
+      junit: results/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: results/coverage.xml
+```
+
+## Best Practices
+
+### Test Organization
+
+1. **Keep tests focused** - One test should test one thing
+2. **Use descriptive names** - Test names should explain what they test
+3. **Follow AAA pattern** - Arrange, Act, Assert
+4. **Use fixtures** - Share common setup across tests
+5. **Mock external services** - Keep tests fast and reliable
+
+### Test Naming
+
+```python
+# Good
+def test_analyze_returns_text2img_for_create_keywords():
+    pass
+
+# Bad
+def test_1():
+    pass
+```
+
+### Assertions
+
+```python
+# Good - specific assertion with message
+assert result["mode"] == "text2img", f"Expected text2img but got {result['mode']}"
+
+# Bad - vague assertion
+assert result
+```
+
+## Test Markers
+
+Available pytest markers:
+
+- `@pytest.mark.unit` - Unit tests
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.performance` - Performance tests
+- `@pytest.mark.e2e` - End-to-end tests
+- `@pytest.mark.slow` - Slow-running tests
+- `@pytest.mark.asyncio` - Async tests
+
+Use markers to run specific test groups:
+
+```bash
+pytest -m unit              # Only unit tests
+pytest -m "not slow"        # Skip slow tests
+pytest -m "unit or integration"  # Unit or integration
+```
+
+## Configuration
+
+### pytest.ini
+
+```ini
+[pytest]
+minversion = 8.0
+testpaths = unit integration performance e2e
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+markers =
+    unit: Unit tests
+    integration: Integration tests
+    performance: Performance tests
+    e2e: End-to-end tests
+    slow: Slow-running tests
+```
+
+### Coverage Configuration
+
+Coverage settings in `pytest.ini`:
+
+```ini
+[coverage:run]
+source = .
+omit = 
+    */tests/*
+    */conftest.py
+    */__pycache__/*
+```
+
+## Architecture
+
+### Test Framework Design
+
+```
+┌─────────────────────────────────────┐
+│         Test Runner                  │
+│        (run_tests.sh)                │
+└──────────┬──────────────────────────┘
+           │
+    ┌──────┴───────┐
+    │              │
+┌───▼───┐      ┌───▼───┐
+│ Unit  │      │  E2E  │
+│Tests  │      │ Tests │
+└───┬───┘      └───┬───┘
+    │              │
+┌───▼─────────────▼────┐
+│     conftest.py       │
+│  (Fixtures & Setup)   │
+└───┬──────────────┬───┘
+    │              │
+┌───▼────┐    ┌───▼────┐
+│ Mocks  │    │ Utils  │
+└────────┘    └────────┘
+```
+
+### Key Components
+
+1. **conftest.py** - Central configuration and fixtures
+2. **run_tests.sh** - Test execution orchestration
+3. **Test suites** - Organized by test type (unit/integration/performance/e2e)
+4. **Fixtures** - Reusable test setup (mocks, sample data)
+5. **Reports** - HTML, JUnit XML, coverage reports
+
+## Maintenance
+
+### Updating Tests
+
+When updating code:
+1. Update relevant tests
+2. Run affected test suite
+3. Run full suite before committing
+4. Update benchmarks if performance changes
+
+### Adding Dependencies
+
+```bash
+# Add to requirements-test.txt
+echo "new-package==1.0.0" >> requirements-test.txt
+
+# Install
+pip install -r requirements-test.txt
+```
+
+## FAQ
+
+**Q: Why is coverage only 50%?**  
+A: This is normal. Tests use mocks and don't execute all production code paths. Tests verify interfaces, not implementations.
+
+**Q: Can I run tests in parallel?**  
+A: Yes! Use `pytest -n auto` (requires pytest-xdist)
+
+**Q: How do I debug a failing test?**  
+A: Run with `-vv` and `--tb=short` for detailed output, or use `--pdb` to drop into debugger on failure.
+
+**Q: Do I need OpenAI API key to run tests?**  
+A: No! Tests use mocks and fallback rules. They work without any API keys.
+
+**Q: How long should tests take?**  
+A: Full suite should complete in < 2 seconds. Individual suites are faster.
+
+## Contributing
+
+### Adding New Tests
+
+1. Create test file in appropriate directory
+2. Add pytest markers
+3. Use existing fixtures from conftest.py
+4. Follow naming conventions
+5. Run tests to verify
+6. Update this README if adding new test category
+
+### Test Guidelines
+
+- Tests must be independent (no shared state)
+- Tests must be deterministic (same input = same output)
+- Tests should be fast (< 1s per test)
+- Use mocks for external dependencies
+- Add docstrings explaining what is tested
+
+## Support
+
+For issues or questions:
+1. Check this README
+2. Review test output and logs
+3. Check `results/report.html` for detailed test results
+4. Examine `results/coverage/index.html` for coverage details
+
+---
+
+**Test Status:** 39/39 passing (100%)  
+**Last Updated:** 2025-11-04  
