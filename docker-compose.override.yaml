@@ -17,10 +17,11 @@ services:
       - WEBUI_SESSION_COOKIE_SAME_SITE=lax
       - WEBUI_SESSION_COOKIE_SECURE=false
       - WEBUI_AUTH=true
-      - ENCRYPTION_KEY=sWMJ67yu2VQKjtC2NlMNRXA9hy9TOneLC1Ejn3ZqmjY= 
+      - ENCRYPTION_KEY=sWMJ67yu2VQKjtC2NlMNRXA9hy9TOneLC1Ejn3ZqmjY=
       - ENABLE_CHAT_CACHE=true
       - CHAT_CACHE_MAX_RECENT=3
       - CHAT_CACHE_TTL_SECONDS=900
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY}
     volumes:
       - ./build:/app/build:ro
       - ./backend:/app/backend:ro
@@ -28,6 +29,7 @@ services:
     networks:
       - default
       - cerebra_net
+
   langflow:
     image: langflowai/langflow:latest
     ports:
@@ -42,6 +44,7 @@ services:
     networks:
       - default
       - cerebra_net
+
   deep-research:
     build:
       context: ../open_deep_research
@@ -53,8 +56,10 @@ services:
     networks:
       - default
       - cerebra_net
+
 networks:
   cerebra_net:
     external: true
+
 volumes:
   langflow-data:

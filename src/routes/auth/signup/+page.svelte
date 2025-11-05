@@ -2,22 +2,12 @@
 	import { toast } from 'svelte-sonner';
 	import { onMount, getContext, tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
-
-	// import { getBackendConfig } from '$lib/apis';
-	// import { getSessionUser, userSignUp } from '$lib/apis/auths';
-
-	// import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
-	// import { WEBUI_NAME, config, user, socket } from '$lib/stores';
 
 	import { WEBUI_BASE_URL } from '$lib/constants';
 	import { WEBUI_NAME } from '$lib/stores';
 
-	import { generateInitialsImage, canvasPixelTest } from '$lib/utils';
-
-	import Spinner from '$lib/components/common/Spinner.svelte';
-
 	const i18n = getContext('i18n');
+	const AUTH = import.meta.env.VITE_BETTERAUTH_PUBLIC;
 
 	let loaded = false;
 	let name = '';
@@ -27,105 +17,38 @@
 	let sending = false;
 	let sent = false;
 	let errorMsg = '';
+	let isResending = false;
 
-	const AUTH = import.meta.env.VITE_BETTERAUTH_PUBLIC ?? 'http://localhost:4000';
-
-	const querystringValue = (key) => {
-		const querystring = window.location.search;
-		const urlParams = new URLSearchParams(querystring);
-		return urlParams.get(key);
+	// --- Password Policy (default) ---
+	const policy = {
+		minLen: 10,
+		requireUpper: true,
+		requireLower: true,
+		requireDigit: true,
+		requireSpecial: true, // any non-alphanumeric
+		forbidSpaces: true
 	};
 
-	// const setSessionUser = async (sessionUser) => {
-	// 	if (sessionUser) {
-	// 		console.log(sessionUser);
-	// 		toast.success($i18n.t(`You're now logged in.`));
-	// 		if (sessionUser.token) {
-	// 			localStorage.token = sessionUser.token;
-	// 		}
+	const RE_UPPER = /[A-Z]/;
+	const RE_LOWER = /[a-z]/;
+	const RE_DIGIT = /\d/;
+	const RE_SPECIAL = /[^A-Za-z0-9]/;
+	const RE_SPACE = /\s/;
 
-	// 		$socket.emit('user-join', { auth: { token: sessionUser.token } });
-	// 		await user.set(sessionUser);
-	// 		await config.set(await getBackendConfig());
+	function passwordIssues(pw) {
+		const issues = [];
+		if (policy.minLen && pw.length < policy.minLen) issues.push(`at least ${policy.minLen} characters`);
+		if (policy.requireUpper && !RE_UPPER.test(pw)) issues.push('one uppercase letter (A–Z)');
+		if (policy.requireLower && !RE_LOWER.test(pw)) issues.push('one lowercase letter (a–z)');
+		if (policy.requireDigit && !RE_DIGIT.test(pw)) issues.push('one number (0–9)');
+		if (policy.requireSpecial && !RE_SPECIAL.test(pw)) issues.push('one special character (!@#$… )');
+		if (policy.forbidSpaces && RE_SPACE.test(pw)) issues.push('no spaces');
+		return issues;
+	}
 
-	// 		const redirectPath = querystringValue('redirect') || '/';
-	// 		goto(redirectPath);
-	// 	}
-	// };
-
-	// No auto-login here; user must verify first.
-
-	// const signUpHandler = async () => {
-	// 	const sessionUser = await userSignUp(name, email, password, generateInitialsImage(name)).catch(
-	// 		(error) => {
-	// 			toast.error(`${error}`);
-	// 			return null;
-	// 		}
-	// 	);
-	// 	await setSessionUser(sessionUser);
-		
-	// 	// 注释掉邮箱验证跳转，直接进入主页
-	// 	// goto('/auth/verify-email?type=signup');
-	// };
-
-
-		const signUpHandler = async () => {
-		sending = true;
-		errorMsg = '';
-		try {
-			// 1) Create user in BetterAuth
-			const r = await fetch(`${AUTH}/api/auth/signup`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, email, password })
-			});
-			const data = await r.json().catch(() => ({}));
-			if (!r.ok) throw new Error(data?.error || 'Sign up failed');
-
-			// 2) Send verification email
-			const v = await fetch(`${AUTH}/api/auth/request-verification`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email })
-			});
-			const vdata = await v.json().catch(() => ({}));
-			if (!v.ok) throw new Error(vdata?.error || 'Could not send verification email');
-
-			toast.success('Verification link sent. Please check your email.');
-			sent = true; // swap UI to the “check your email” message
-		} catch (e) {
-			errorMsg = e?.message ?? 'Something went wrong';
-			toast.error(errorMsg);
-		} finally {
-			sending = false;
-		}
-	};
-
-
-
-	const checkOauthCallback = async () => {
-		if (!$page.url.hash) {
-			return;
-		}
-		const hash = $page.url.hash.substring(1);
-		if (!hash) {
-			return;
-		}
-		const params = new URLSearchParams(hash);
-		const token = params.get('token');
-		if (!token) {
-			return;
-		}
-		const sessionUser = await getSessionUser(token).catch((error) => {
-			toast.error(`${error}`);
-			return null;
-		});
-		if (!sessionUser) {
-			return;
-		}
-		localStorage.token = token;
-		await setSessionUser(sessionUser);
-	};
+	// reactive: re-check on every keystroke
+	$: pwIssues = passwordIssues(password);
+	$: isPasswordValid = pwIssues.length === 0;
 
 	async function setLogoImage() {
 		await tick();
@@ -150,23 +73,75 @@
 		}
 	}
 
-	// onMount(async () => {
-	// 	if ($user !== undefined) {
-	// 		const redirectPath = querystringValue('redirect') || '/';
-	// 		goto(redirectPath);
-	// 	}
-	// 	await checkOauthCallback();
+	const signUpHandler = async () => {
+		sending = true;
+		errorMsg = '';
+		// ⛔ Client-side guard
+		const issues = passwordIssues(password);
+		if (issues.length) {
+			sending = false;
+			errorMsg = `Password must have: ${issues.join(', ')}.`;
+			toast.error(errorMsg);
+			return;
+		}
+		try {
+			// 1) Create user in BetterAuth
+			const r = await fetch(`${AUTH}/api/auth/signup`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name, email, password })
+			});
+			const data = await r.json().catch(() => ({}));
+			if (!r.ok) throw new Error(data?.error || 'Sign up failed');
 
-	// 	loaded = true;
-	// 	setLogoImage();
-	// });
+			// 2) Send verification email
+			const v = await fetch(`${AUTH}/api/auth/request-verification`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email })
+			});
+			const vdata = await v.json().catch(() => ({}));
+			if (!v.ok) throw new Error(vdata?.error || 'Could not send verification email');
+
+			toast.success('Verification link sent. Please check your email.');
+			sent = true;
+		} catch (e) {
+			errorMsg = e?.message ?? 'Something went wrong';
+			toast.error(errorMsg);
+		} finally {
+			sending = false;
+		}
+	};
+
+	const handleResendEmail = async () => {
+		isResending = true;
+		errorMsg = '';
+		
+		try {
+			const response = await fetch(`${AUTH}/api/auth/request-verification`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email })
+			});
+
+			if (response.ok) {
+				toast.success('Verification email resent! Please check your inbox.');
+			} else {
+				const data = await response.json();
+				throw new Error(data?.error || 'Failed to resend email');
+			}
+		} catch (error) {
+			errorMsg = error.message;
+			toast.error(errorMsg);
+		} finally {
+			isResending = false;
+		}
+	};
 
 	onMount(async () => {
 		loaded = true;
 		setLogoImage();
 	});
-
-
 </script>
 
 <svelte:head>
@@ -190,18 +165,11 @@
 
 				{#if !sent}
 					<!-- Title -->
-					 <div class="text-center mb-8">
+					<div class="text-center mb-8">
 						<h1 class="text-2xl font-bold text-black dark:text-white">
 							Create your free account
 						</h1>
-					 </div>
-
-				<!-- Title -->
-				<!-- <div class="text-center mb-8">
-					<h1 class="text-2xl font-bold text-black dark:text-white">
-						Create your free account
-					</h1>
-				</div> -->
+					</div>
 
 					<!-- Signup Form -->
 					<form
@@ -211,60 +179,83 @@
 							signUpHandler();
 						}}
 					>
-					<div>
-						<label for="name" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Name
-						</label>
-						<input
-							id="name"
-							bind:value={name}
-							type="text"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your full name"
-							required
-						/>
-					</div>
+						<div>
+							<label for="name" class="block text-sm font-medium text-black dark:text-white mb-2">
+								Name
+							</label>
+							<input
+								id="name"
+								bind:value={name}
+								type="text"
+								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
+								placeholder="Enter your full name"
+								required
+							/>
+						</div>
 
-					<div>
-						<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Email
-						</label>
-						<input
-							id="email"
-							bind:value={email}
-							type="email"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your email"
-							required
-						/>
-					</div>
+						<div>
+							<label for="email" class="block text-sm font-medium text-black dark:text-white mb-2">
+								Email
+							</label>
+							<input
+								id="email"
+								bind:value={email}
+								type="email"
+								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
+								placeholder="Enter your email"
+								required
+							/>
+						</div>
 
-					<div>
-						<label for="password" class="block text-sm font-medium text-black dark:text-white mb-2">
-							Password
-						</label>
-						<input
-							id="password"
-							bind:value={password}
-							type="password"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
-							placeholder="Enter your password"
-							required
-						/>
-					</div>
+						<div>
+							<label for="password" class="block text-sm font-medium text-black dark:text-white mb-2">
+								Password
+							</label>
+							<input
+								id="password"
+								bind:value={password}
+								type="password"
+								class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none"
+								placeholder="Enter your password"
+								required
+								autocomplete="new-password"
+    							aria-invalid={!isPasswordValid}
+							/>
+							<!-- Live password policy checklist -->
+							<ul class="mt-2 text-xs space-y-1">
+								<li class={password.length >= policy.minLen ? 'text-green-600' : 'text-gray-500'}>
+									{password.length >= policy.minLen ? '✓' : '•'} At least {policy.minLen} characters
+								</li>
+								<li class={RE_UPPER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_UPPER.test(password) ? '✓' : '•'} One uppercase letter (A–Z)
+								</li>
+								<li class={RE_LOWER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_LOWER.test(password) ? '✓' : '•'} One lowercase letter (a–z)
+								</li>
+								<li class={RE_DIGIT.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_DIGIT.test(password) ? '✓' : '•'} One number (0–9)
+								</li>
+								<li class={RE_SPECIAL.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{RE_SPECIAL.test(password) ? '✓' : '•'} One special character (!@#$…)
+								</li>
+								<li class={!RE_SPACE.test(password) ? 'text-green-600' : 'text-gray-500'}>
+									{!RE_SPACE.test(password) ? '✓' : '•'} No spaces
+								</li>
+							</ul>
+						</div>
 
-					{#if errorMsg}
-						<p class="text-sm text-red-400">{errorMsg}</p>
-					{/if}
+						{#if errorMsg}
+							<p class="text-sm text-red-400">{errorMsg}</p>
+						{/if}
 
-					<button
-						type="submit"
-						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors"
-						disabled={sending}
-					>
-						{sending ? 'Sending…' : 'Sign Up'}
-					</button>
-				</form>
+						<button
+							type="submit"
+							class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+							disabled={sending || !isPasswordValid}
+						>
+							{sending ? 'Sending…' : 'Sign Up'}
+						</button>
+					</form>
 
 					<!-- Sign In Link -->
 					<div class="text-center mt-6">
@@ -280,16 +271,51 @@
 						</button>
 					</div>
 				{:else}
-					<!-- Success message -->
-					<div class="text-center space-y-4">
+					<div class="text-center space-y-6">
+						<!-- Email Icon -->
+						<div class="flex justify-center mb-4">
+							<div class="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+								<svg class="w-8 h-8 text-green-600 dark:text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+								</svg>
+							</div>
+						</div>
+
 						<h1 class="text-2xl font-bold text-black dark:text-white">Check your email</h1>
-						<p class="text-sm text-gray-400">
-							We sent a verification link to
-							<span class="font-medium text-gray-200">{email}</span>.<br />
-							Please check your inbox (and spam). The link expires in 24 hours.
+						
+						<p class="text-sm text-gray-600 dark:text-gray-400">
+							We sent a verification link to<br />
+							<span class="font-medium text-gray-800 dark:text-gray-200">{email}</span>
 						</p>
+						
+						<p class="text-sm text-gray-600 dark:text-gray-400">
+							Please check your inbox (and spam folder).<br />
+							The link expires in 24 hours.
+						</p>
+						
+						{#if errorMsg}
+							<div class="p-3 bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 rounded-lg text-sm">
+								{errorMsg}
+							</div>
+						{/if}
+
 						<div class="pt-2">
-							<button class="underline text-sm" on:click={() => goto('/auth/login')}>
+							<button
+								type="button"
+								class="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+								on:click={handleResendEmail}
+								disabled={isResending}
+							>
+								{isResending ? 'Sending...' : 'Resend Verification Email'}
+							</button>
+						</div>
+
+						<div class="pt-2">
+							<button 
+								type="button"
+								class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 underline" 
+								on:click={() => goto('/auth/login')}
+							>
 								Back to Sign In
 							</button>
 						</div>

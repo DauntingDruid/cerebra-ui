@@ -1,124 +1,122 @@
 <script>
-	import { onMount, getContext, tick } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
-	import { WEBUI_BASE_URL } from '$lib/constants';
+  import { onMount, getContext, tick } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { WEBUI_BASE_URL } from '$lib/constants';
 
-	const i18n = getContext('i18n');
+  const i18n = getContext('i18n');
 
-	let loaded = false;
-	let password = '';
-	let confirmPassword = '';
-	let passwordError = '';
-	let confirmPasswordError = '';
-	let isLoading = false;
-	let errorMessage = '';
-	let successMessage = '';
-	let token = '';
+  let loaded = false;
+  let password = '';
+  let confirmPassword = '';
+  let passwordError = '';
+  let confirmPasswordError = '';
+  let isLoading = false;
+  let errorMessage = '';
+  let successMessage = '';
+  let token = '';
 
-	async function setLogoImage() {
-		await tick();
-		const logo = document.getElementById('logo');
+  // ---- Password Policy (same as signup) ----
+  const policy = {
+    minLen: 10,
+    requireUpper: true,
+    requireLower: true,
+    requireDigit: true,
+    requireSpecial: true,
+    forbidSpaces: true
+  };
+  const RE_UPPER = /[A-Z]/;
+  const RE_LOWER = /[a-z]/;
+  const RE_DIGIT = /\d/;
+  const RE_SPECIAL = /[^A-Za-z0-9]/;
+  const RE_SPACE = /\s/;
 
-		if (logo) {
-			const isDarkMode = document.documentElement.classList.contains('dark');
+  function passwordIssues(pw) {
+    const issues = [];
+    if (policy.minLen && pw.length < policy.minLen) issues.push(`at least ${policy.minLen} characters`);
+    if (policy.requireUpper && !RE_UPPER.test(pw)) issues.push('one uppercase letter (A–Z)');
+    if (policy.requireLower && !RE_LOWER.test(pw)) issues.push('one lowercase letter (a–z)');
+    if (policy.requireDigit && !RE_DIGIT.test(pw)) issues.push('one number (0–9)');
+    if (policy.requireSpecial && !RE_SPECIAL.test(pw)) issues.push('one special character (!@#$…)');
+    if (policy.forbidSpaces && RE_SPACE.test(pw)) issues.push('no spaces');
+    return issues;
+  }
 
-			if (isDarkMode) {
-				const darkImage = new Image();
-				darkImage.src = '/static/favicon-dark.png';
+  // reactive: live checks
+  $: pwIssues = passwordIssues(password);
+  $: isPasswordValid = pwIssues.length === 0;
+  $: confirmPasswordError = confirmPassword && confirmPassword !== password ? 'Passwords do not match' : '';
+  $: passwordError = password && !isPasswordValid ? `Password must have: ${pwIssues.join(', ')}.` : '';
 
-				darkImage.onload = () => {
-					logo.src = '/static/favicon-dark.png';
-					logo.style.filter = '';
-				};
+  async function setLogoImage() {
+    await tick();
+    const logo = document.getElementById('logo');
+    if (logo) {
+      const isDarkMode = document.documentElement.classList.contains('dark');
+      if (isDarkMode) {
+        const darkImage = new Image();
+        darkImage.src = '/static/favicon-dark.png';
+        darkImage.onload = () => {
+          logo.src = '/static/favicon-dark.png';
+          logo.style.filter = '';
+        };
+        darkImage.onerror = () => {
+          logo.style.filter = 'invert(1)';
+        };
+      }
+    }
+  }
 
-				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)';
-				};
-			}
-		}
-	}
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    errorMessage = '';
 
-	function validatePassword() {
-		passwordError = '';
-		if (password.length < 6) {
-			passwordError = 'Password must be at least 6 characters long';
-			return false;
-		}
-		return true;
-	}
+    // final guard
+    if (!token) {
+      errorMessage = 'Invalid or missing reset token. Please request a new password reset link.';
+      return;
+    }
+    if (!isPasswordValid) {
+      errorMessage = `Password must have: ${pwIssues.join(', ')}.`;
+      return;
+    }
+    if (confirmPassword !== password) {
+      errorMessage = 'Passwords do not match';
+      return;
+    }
 
-	function validateConfirmPassword() {
-		confirmPasswordError = '';
-		if (confirmPassword !== password) {
-			confirmPasswordError = 'Passwords do not match';
-			return false;
-		}
-		return true;
-	}
+    isLoading = true;
+    try {
+      const response = await fetch(`${WEBUI_BASE_URL}/api/v1/auths/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
 
-	const handleSubmit = async (e) => {
-		e.preventDefault();
-		errorMessage = '';
-		
-		// Validate passwords
-		const isPasswordValid = validatePassword();
-		const isConfirmPasswordValid = validateConfirmPassword();
-		
-		if (!isPasswordValid || !isConfirmPasswordValid) {
-			return;
-		}
+      const data = await response.json();
+      if (response.ok) {
+        successMessage = data.message || 'Password reset successfully!';
+        setTimeout(() => { goto('/auth/login'); }, 2000);
+      } else {
+        errorMessage = data.detail || 'Failed to reset password. The link may have expired.';
+      }
+    } catch (err) {
+      console.error('Reset password error:', err);
+      errorMessage = 'An error occurred. Please try again or request a new reset link.';
+    } finally {
+      isLoading = false;
+    }
+  };
 
-		if (!token) {
-			errorMessage = 'Invalid or missing reset token. Please request a new password reset link.';
-			return;
-		}
-
-		isLoading = true;
-
-		try {
-			const response = await fetch(`${WEBUI_BASE_URL}/api/v1/auths/reset-password`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ 
-					token: token,
-					password: password 
-				})
-			});
-
-			const data = await response.json();
-
-			if (response.ok) {
-				successMessage = data.message || 'Password reset successfully!';
-				// Redirect to login after 2 seconds
-				setTimeout(() => {
-					goto('/auth/login');
-				}, 2000);
-			} else {
-				errorMessage = data.detail || 'Failed to reset password. The link may have expired.';
-			}
-		} catch (error) {
-			console.error('Reset password error:', error);
-			errorMessage = 'An error occurred. Please try again or request a new reset link.';
-		} finally {
-			isLoading = false;
-		}
-	};
-
-	onMount(async () => {
-		loaded = true;
-		setLogoImage();
-
-		// Get token from URL query parameters
-		const urlParams = new URLSearchParams(window.location.search);
-		token = urlParams.get('token') || '';
-
-		if (!token) {
-			errorMessage = 'Invalid or missing reset token. Please request a new password reset link.';
-		}
-	});
+  onMount(async () => {
+    loaded = true;
+    setLogoImage();
+    const urlParams = new URLSearchParams(window.location.search);
+    token = urlParams.get('token') || '';
+    if (!token) {
+      errorMessage = 'Invalid or missing reset token. Please request a new reset link.';
+    }
+  });
 </script>
 
 <svelte:head>
@@ -172,12 +170,36 @@
 							id="password"
 							bind:value={password}
 							type="password"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {passwordError ? 'border-red-500' : ''}"
+							class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none
+								{passwordError ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}"
 							placeholder="Enter new password"
 							required
+							autocomplete="new-password"
+							aria-invalid={!isPasswordValid}
 							disabled={isLoading || !!successMessage}
-							on:blur={validatePassword}
 						/>
+
+						    <!-- Live checklist -->
+						<ul class="mt-2 text-xs space-y-1">
+							<li class={(password.length >= policy.minLen) ? 'text-green-600' : 'text-gray-500'}>
+								{(password.length >= policy.minLen) ? '✓' : '•'} At least {policy.minLen} characters
+							</li>
+							<li class={RE_UPPER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+								{RE_UPPER.test(password) ? '✓' : '•'} One uppercase letter (A–Z)
+							</li>
+							<li class={RE_LOWER.test(password) ? 'text-green-600' : 'text-gray-500'}>
+								{RE_LOWER.test(password) ? '✓' : '•'} One lowercase letter (a–z)
+							</li>
+							<li class={RE_DIGIT.test(password) ? 'text-green-600' : 'text-gray-500'}>
+								{RE_DIGIT.test(password) ? '✓' : '•'} One number (0–9)
+							</li>
+							<li class={RE_SPECIAL.test(password) ? 'text-green-600' : 'text-gray-500'}>
+								{RE_SPECIAL.test(password) ? '✓' : '•'} One special character (!@#$…)
+							</li>
+							<li class={!RE_SPACE.test(password) ? 'text-green-600' : 'text-gray-500'}>
+								{!RE_SPACE.test(password) ? '✓' : '•'} No spaces
+							</li>
+						</ul>
 						{#if passwordError}
 							<p class="text-red-500 text-sm mt-1">{passwordError}</p>
 						{/if}
@@ -191,11 +213,13 @@
 							id="confirm-password"
 							bind:value={confirmPassword}
 							type="password"
-							class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none {confirmPasswordError ? 'border-red-500' : ''}"
+							class="w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none
+             					{confirmPasswordError ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}"
 							placeholder="Confirm new password"
 							required
+							autocomplete="new-password"
+							aria-invalid={!!confirmPasswordError}
 							disabled={isLoading || !!successMessage}
-							on:blur={validateConfirmPassword}
 						/>
 						{#if confirmPasswordError}
 							<p class="text-red-500 text-sm mt-1">{confirmPasswordError}</p>
@@ -205,7 +229,7 @@
 					<button
 						type="submit"
 						class="w-full bg-gray-800 dark:bg-gray-700 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 dark:hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-						disabled={isLoading || !!successMessage || !token}
+    					disabled={isLoading || !!successMessage || !token || !isPasswordValid || confirmPassword !== password}
 					>
 						{isLoading ? 'Resetting...' : 'Confirm'}
 					</button>

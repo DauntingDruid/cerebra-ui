@@ -1,374 +1,16 @@
-# # backend/open_webui/routers/betterauth_adapter.py
-# import os
-# import json
-# import psycopg
-# from psycopg.rows import dict_row
-# import aiohttp
-# from urllib.parse import urlencode
-# from sqlalchemy import text
-# from open_webui.internal.db import get_db
-# from fastapi import APIRouter, HTTPException, Request, Response
-# from fastapi.responses import JSONResponse
-# from open_webui.env import (
-#     WEBUI_SESSION_COOKIE_SAME_SITE,
-#     WEBUI_SESSION_COOKIE_SECURE,
-# )
-
-# DATABASE_URL = os.getenv("DATABASE_URL")
-
-# router = APIRouter(prefix="/api/v1/auths", tags=["auths"])
-
-# BETTERAUTH_BASE_URL = os.getenv(
-#     "BETTERAUTH_BASE_URL",
-#     "http://betterauth-service-betterauth-1:4000",
-# ).rstrip("/")
-
-
-# def _upsert_user_bootstrap(email: str, name: str):
-#     """
-#     Ensure a row exists in Postgres table "user".
-#     - If table has 0 rows -> this email becomes admin/active.
-#     - Else -> pending/user.
-#     Returns (role, status, is_active).
-#     """
-#     with get_db() as db:
-#         row = db.execute(
-#             text("""SELECT role, status, is_active FROM "user" WHERE email = :e"""),
-#             {"e": email},
-#         ).fetchone()
-
-#         if row:
-#             return (getattr(row, "role", "user"),
-#                     getattr(row, "status", "pending"),
-#                     bool(getattr(row, "is_active", False)))
-
-#         count = db.execute(text("""SELECT COUNT(*) FROM "user" """)).scalar()
-#         if count == 0:
-#             role, status, is_active = "admin", "active", True
-#         else:
-#             role, status, is_active = "user", "pending", False
-
-#         # Upsert (create if missing)
-#         db.execute(
-#             text("""
-#                 INSERT INTO "user" (email, name, role, status, is_active, "emailVerified")
-#                 VALUES (:email, :name, :role, :status, :is_active, true)
-#                 ON CONFLICT(email) DO UPDATE SET
-#                     name=excluded.name,
-#                     role=excluded.role,
-#                     status=excluded.status,
-#                     is_active=excluded.is_active
-#             """),
-#             {
-#                 "email": email,
-#                 "name": name or email.split("@")[0],
-#                 "role": role,
-#                 "status": status,
-#                 "is_active": is_active,
-#             },
-#         )
-#         db.commit()
-#         return (role, status, is_active)
-        
-
-# def _string_error(data, fallback="Request failed"):
-#     """Extract a human-readable error string from various shapes."""
-#     if isinstance(data, dict):
-#         for k in ("detail", "error", "message"):
-#             if data.get(k):
-#                 v = data[k]
-#                 return v if isinstance(v, str) else json.dumps(v)
-#         return json.dumps(data)
-#     if isinstance(data, (list, tuple)):
-#         return json.dumps(data)
-#     if data is None:
-#         return fallback
-#     return str(data)
-
-
-# async def _post_json(path: str, payload: dict):
-#     if not BETTERAUTH_BASE_URL:
-#         raise HTTPException(status_code=500, detail="BETTERAUTH_BASE_URL not configured")
-
-#     url = f"{BETTERAUTH_BASE_URL}{path}"
-#     timeout = aiohttp.ClientTimeout(total=15)
-#     async with aiohttp.ClientSession(timeout=timeout) as s:
-#         async with s.post(url, json=payload) as resp:
-#             try:
-#                 data = await resp.json()
-#             except Exception:
-#                 text = await resp.text()
-#                 data = {"message": text}
-
-#             if resp.status >= 400:
-#                 raise HTTPException(
-#                     status_code=resp.status,
-#                     detail=_string_error(data, fallback=f"HTTP {resp.status}"),
-#                 )
-#             return data
-
-
-# async def _get_text(path: str, query: dict):
-#     """GET that may return plain text (BetterAuth verify endpoint)."""
-#     if not BETTERAUTH_BASE_URL:
-#         raise HTTPException(status_code=500, detail="BETTERAUTH_BASE_URL not configured")
-
-#     qs = urlencode(query or {})
-#     url = f"{BETTERAUTH_BASE_URL}{path}?{qs}"
-#     timeout = aiohttp.ClientTimeout(total=15)
-#     async with aiohttp.ClientSession(timeout=timeout) as s:
-#         async with s.get(url) as resp:
-#             txt = await resp.text()
-#             if resp.status >= 400:
-#                 # try to parse JSON; fall back to text
-#                 try:
-#                     dj = json.loads(txt)
-#                     msg = _string_error(dj, txt)
-#                 except Exception:
-#                     msg = txt
-#                 raise HTTPException(status_code=resp.status, detail=msg)
-#             return txt
-
-
-# def _normalize_user(u: dict, email_fallback: str = "") -> dict:
-#     email = (u or {}).get("email") or email_fallback
-#     name = (u or {}).get("name") or (email.split("@")[0] if email else "")
-#     return {
-#         "id": (u or {}).get("id") or (u or {}).get("_id") or email,
-#         "email": email,
-#         "name": name,
-#         "role": (u or {}).get("role") or "user",
-#     }
-
-
-# def _json_ok_with_cookie(user: dict, token: str | None):
-#     """Return {status:true, user, token} and set a JS-readable 'token' cookie."""
-#     resp = JSONResponse({"status": True, "user": user, "token": token})
-#     if token:
-#         resp.set_cookie(
-#             "token",
-#             token,
-#             httponly=False,  # UI reads it via JS in dev
-#             samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-#             secure=WEBUI_SESSION_COOKIE_SECURE,
-#             path="/",
-#         )
-#     return resp
-
-
-# # @router.post("/signin")
-# # async def signin(payload: dict, request: Request):
-# #     email = (payload or {}).get("email", "").strip().lower()
-# #     password = (payload or {}).get("password", "")
-# #     if not email or not password:
-# #         raise HTTPException(status_code=400, detail="Email and password required")
-
-# #     ba = await _post_json("/api/auth/login", {"email": email, "password": password})
-# #     token = ba.get("token") or ba.get("access_token")
-# #     user = _normalize_user(ba.get("user"), email_fallback=email)
-# #     #user["role"] = "admin"
-# #     if not token or not user.get("email"):
-# #         raise HTTPException(status_code=500, detail="Login payload missing token or user")
-
-# #     return _json_ok_with_cookie(user, token)
-
-
-
-
-# @router.post("/signin")
-# async def signin(payload: dict, request: Request, response: Response):
-#     # Expecting { email, password } from frontend
-#     email = (payload or {}).get("email", "").strip().lower()
-#     password = (payload or {}).get("password", "")
-#     if not email or not password:
-#         raise HTTPException(status_code=400, detail="Email and password required")
-
-#     # 1) Authenticate with BetterAuth
-#     ba = await _post_json("/api/auth/login", {"email": email, "password": password})
-
-#     token = ba.get("token") or ba.get("access_token")
-#     user_raw = ba.get("user") or {}
-#     if not token or not isinstance(user_raw, dict):
-#         response.delete_cookie("token", path="/")
-#         raise HTTPException(status_code=401, detail="Invalid credentials")
-
-#     ret_email = (user_raw.get("email") or "").strip().lower()
-#     if ret_email != email:
-#         response.delete_cookie("token", path="/")
-#         raise HTTPException(status_code=401, detail="Invalid credentials")
-
-#     # Enforce email verification if BA exposes it
-#     if "emailVerified" in user_raw and not bool(user_raw.get("emailVerified")):
-#         response.delete_cookie("token", path="/")
-#         raise HTTPException(status_code=403, detail="Email not verified")
-
-#     # 2) Bootstrap/ensure a row in Postgres "user" (no manual DB work)
-#     role, status, is_active = _upsert_user_bootstrap(email, user_raw.get("name"))
-
-#     # 3) Block pending users until an admin approves in the frontend
-#     if status != "active" or not is_active:
-#         response.delete_cookie("token", path="/")
-#         return JSONResponse(
-#             {"status": False, "code": "PENDING_APPROVAL", "message": "Account pending admin approval"},
-#             status_code=403,
-#         )
-
-#     # 4) Success → set cookie and return normalized payload
-#     # Keep cookie style similar to your old route
-#     response.set_cookie(
-#         key="token",
-#         value=token,
-#         httponly=True,
-#         samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-#         secure=WEBUI_SESSION_COOKIE_SECURE,
-#         path="/",
-#     )
-
-#     user = {
-#         "id": user_raw.get("id") or user_raw.get("_id") or email,
-#         "email": email,
-#         "name": user_raw.get("name") or email.split("@")[0],
-#         "role": role,
-#         "profile_image_url": user_raw.get("profile_image_url"),
-#     }
-
-#     # If your frontend expects the old shape, return it directly:
-#     return {
-#         "token": token,
-#         "token_type": "Bearer",
-#         "expires_at": None,  # BetterAuth token expiry not surfaced here; adapt if needed
-#         "id": user["id"],
-#         "email": user["email"],
-#         "name": user["name"],
-#         "role": user["role"],
-#         "profile_image_url": user["profile_image_url"],
-#         "permissions": {},  # fill if you have a permissions layer
-#     }
-
-
-# @router.post("/signup")
-# async def signup(payload: dict, request: Request):
-#     name = (payload or {}).get("name") or ""
-#     email = (payload or {}).get("email", "").strip().lower()
-#     password = (payload or {}).get("password", "")
-#     profile_image_url = (payload or {}).get("profile_image_url") or ""
-#     if not email or not password:
-#         raise HTTPException(status_code=400, detail="Name, email, and password required")
-
-#     # Call BetterAuth signup
-#     ba = await _post_json(
-#         "/api/auth/signup",
-#         {"name": name, "email": email, "password": password, "profile_image_url": profile_image_url},
-#     )
-
-#     token = ba.get("token") or ba.get("access_token")
-#     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
-
-#     # Decide role/status/is_active
-#     decide = _upsert_user_bootstrap(email)
-#     with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
-#         cur.execute(
-#             '''UPDATE "user"
-#                SET role = %s, status = %s, is_active = %s, updatedAt = NOW()
-#              WHERE email = %s''',
-#             (decide["role"], decide["status"], decide["is_active"], email)
-#         )
-#         conn.commit()
-
-#     return _json_ok_with_cookie({**user, **decide}, token)
-
-
-# # @router.post("/signup")
-# # async def signup(payload: dict, request: Request):
-# #     name = (payload or {}).get("name") or ""
-# #     email = (payload or {}).get("email", "").strip().lower()
-# #     password = (payload or {}).get("password", "")
-# #     profile_image_url = (payload or {}).get("profile_image_url") or ""
-# #     if not email or not password:
-# #         raise HTTPException(status_code=400, detail="Name, email, and password required")
-
-# #     ba = await _post_json(
-# #         "/api/auth/signup",
-# #         {"name": name, "email": email, "password": password, "profile_image_url": profile_image_url},
-# #     )
-
-# #     # BetterAuth may omit token until email is verified
-# #     token = ba.get("token") or ba.get("access_token")
-# #     user = _normalize_user(ba.get("user") or {"email": email, "name": name, "role": "user"}, email_fallback=email)
-# #     #user["role"] = "admin"
-# #     return _json_ok_with_cookie(user, token)
-
-
-# @router.post("/send-verification")
-# async def send_verification(payload: dict):
-#     """
-#     Body: { "email": "user@example.com" }
-#     Returns: { "status": true, "message": "..."}
-#     """
-#     email = (payload or {}).get("email", "").strip().lower()
-#     if not email:
-#         raise HTTPException(status_code=400, detail="email is required")
-
-#     await _post_json("/api/auth/request-verification", {"email": email})
-#     return JSONResponse({"status": True, "message": "Verification email sent if account exists."})
-
-
-# @router.post("/verify-email")
-# async def verify_email(payload: dict):
-#     """
-#     Body: { "token": "...", "email": "user@example.com" }
-#     Returns: { "status": true, "message": "..."}
-#     """
-#     token = (payload or {}).get("token", "")
-#     email = (payload or {}).get("email", "").strip().lower()
-#     if not token or not email:
-#         raise HTTPException(status_code=400, detail="token and email are required")
-
-#     txt = await _get_text("/api/auth/verify", {"token": token, "email": email})
-#     return JSONResponse({"status": True, "message": txt or "Email verified"})
-
-
-
-# @router.patch("/approve")
-# async def approve_user(payload: dict):
-#     email = (payload or {}).get("email", "").strip().lower()
-#     if not email:
-#         raise HTTPException(status_code=400, detail="Email required")
-
-#     with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
-#         cur.execute(
-#             '''UPDATE "user"
-#                SET status = 'active', is_active = true
-#              WHERE email = %s''',
-#             (email,)
-#         )
-#         if cur.rowcount == 0:
-#             raise HTTPException(status_code=404, detail="User not found")
-#         conn.commit()
-
-#     return {"status": True, "message": f"User {email} approved"}
-
-
-
-# @router.get("/signout")
-# async def signout():
-#     return JSONResponse({"status": True})
-
-
-
-
-
 # backend/open_webui/routers/betterauth_adapter.py
-import os
+import os, httpx
 import json
 import time
 import datetime
 import uuid
 import aiohttp
+import re
+from typing import List
 from urllib.parse import urlencode
 from sqlalchemy import text
 from open_webui.internal.db import get_db
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from open_webui.env import (
     WEBUI_SESSION_COOKIE_SAME_SITE,
@@ -378,7 +20,7 @@ from open_webui.env import (
     WEBUI_AUTH,
 )
 from open_webui.utils.misc import parse_duration
-from open_webui.utils.auth import create_token, get_password_hash
+from open_webui.utils.auth import get_current_user, create_token, get_password_hash
 from open_webui.utils.access_control import get_permissions
 from open_webui.models.users import Users
 from open_webui.models.auths import Auths, SigninForm, SignupForm
@@ -394,23 +36,86 @@ BETTERAUTH_BASE_URL = os.getenv(
 ).rstrip("/")
 
 
+@router.get("/", tags=["auths"])
+async def get_session_user(request: Request, response: Response, user=Depends(get_current_user)):
+    """
+    Validate the session cookie and return the current user's data.
+    This restores the session on page refresh.
+    """
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = None
+    if expires_delta:
+        expires_at = int(time.time()) + int(expires_delta.total_seconds())
+
+    token = create_token(
+        data={"id": user.id},
+        expires_delta=expires_delta,
+    )
+
+    datetime_expires_at = (
+        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+        if expires_at else None
+    )
+
+    response.set_cookie(
+        key="token",
+        value=token,
+        expires=datetime_expires_at,
+        httponly=True,
+        samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
+        secure=WEBUI_SESSION_COOKIE_SECURE,
+    )
+
+    user_permissions = get_permissions(
+        user.id, request.app.state.config.USER_PERMISSIONS
+    )
+
+    return {
+        "token": token,
+        "token_type": "Bearer",
+        "expires_at": expires_at,
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "profile_image_url": user.profile_image_url,
+        "permissions": user_permissions,
+    }
+
+
+TURNSTILE_SECRET = os.getenv("TURNSTILE_SECRET_KEY", "")
+
+async def verify_turnstile_token(token: str, remote_ip: str | None = None):
+    if not TURNSTILE_SECRET:
+        raise HTTPException(status_code=500, detail="Turnstile not configured")
+
+    data = {"secret": TURNSTILE_SECRET, "response": token}
+    if remote_ip:
+        data["remoteip"] = remote_ip
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post("https://challenges.cloudflare.com/turnstile/v0/siteverify", data=data)
+        j = res.json()
+        if not j.get("success"):
+            # Log error-codes if present to debug site config
+            codes = j.get("error-codes")
+            print("[Turnstile] verify failed:", codes)
+            raise HTTPException(status_code=400, detail="Invalid Turnstile token")
+
+
 def _upsert_user_bootstrap(email: str, name: str):
     """
     Ensure a row exists in Open WebUI's user table.
     Uses the existing User model from Open WebUI.
     """
-    # Check if user exists using Open WebUI's Users model
     user = Users.get_user_by_email(email)
     
     if user:
         return user
     
-    # User doesn't exist, determine role based on user count
     user_count = Users.get_num_users()
     role = "admin" if user_count == 0 else "user"
     
-    # We don't create the user here - let the caller handle it
-    # Just return the role that should be used
     return None
 
 
@@ -483,147 +188,191 @@ async def _get_text(path: str, query: dict):
 
 @router.post("/signin")
 async def signin(request: Request, response: Response, form_data: SigninForm):
-    """
-    BetterAuth-integrated signin that matches the old auths.py logic exactly
-    """
-    
-    # Handle trusted email header authentication (same as old code)
+    # 1) Read turnstile token from JSON (frontend must send it)
+    payload = await request.json()
+    ts_token = payload.get("turnstile_token")
+    if not ts_token:
+        raise HTTPException(status_code=400, detail="Turnstile token missing")
+
+    # 2) Verify turnstile first
+    client_ip = request.client.host if request.client else None
+    await verify_turnstile_token(ts_token, client_ip)
+
+    # Will carry through to the final response
+    email_verified = True
+    user = None
+
     if WEBUI_AUTH_TRUSTED_EMAIL_HEADER:
         if WEBUI_AUTH_TRUSTED_EMAIL_HEADER not in request.headers:
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_TRUSTED_HEADER)
-
         trusted_email = request.headers[WEBUI_AUTH_TRUSTED_EMAIL_HEADER].lower()
-        trusted_name = trusted_email
-        if WEBUI_AUTH_TRUSTED_NAME_HEADER:
-            trusted_name = request.headers.get(
-                WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email
-            )
-        
-        # Check if user exists in Open WebUI database
-        if not Users.get_user_by_email(trusted_email.lower()):
-            # Create user in both BetterAuth and Open WebUI
+        trusted_name = request.headers.get(
+            WEBUI_AUTH_TRUSTED_NAME_HEADER, trusted_email
+        ) if WEBUI_AUTH_TRUSTED_NAME_HEADER else trusted_email
+
+        if not Users.get_user_by_email(trusted_email):
             await signup(
-                request,
-                response,
-                SignupForm(
-                    email=trusted_email, 
-                    password=str(uuid.uuid4()), 
-                    name=trusted_name
-                ),
+                request, response,
+                SignupForm(email=trusted_email, password=str(uuid.uuid4()), name=trusted_name)
             )
-        
-        # Authenticate using Open WebUI's method
+
         user = Auths.authenticate_user_by_trusted_header(trusted_email)
-    
-    # Handle no-auth mode (same as old code)
-    elif WEBUI_AUTH == False:
+        email_verified = True
+    elif WEBUI_AUTH is False:
         admin_email = "admin@localhost"
         admin_password = "admin"
-
-        if Users.get_user_by_email(admin_email.lower()):
-            user = Auths.authenticate_user(admin_email.lower(), admin_password)
+        if Users.get_user_by_email(admin_email):
+            user = Auths.authenticate_user(admin_email, admin_password)
         else:
             if Users.get_num_users() != 0:
                 raise HTTPException(400, detail=ERROR_MESSAGES.EXISTING_USERS)
-
             await signup(
-                request,
-                response,
-                SignupForm(email=admin_email, password=admin_password, name="User"),
+                request, response,
+                SignupForm(email=admin_email, password=admin_password, name="User")
             )
-
-            user = Auths.authenticate_user(admin_email.lower(), admin_password)
-    
-    # Handle BetterAuth authentication (new logic)
+            user = Auths.authenticate_user(admin_email, admin_password)
+        email_verified = True
     else:
-        email = form_data.email.lower()
+        email = form_data.email.lower().strip()
         password = form_data.password
-        
-        # 1) Try to authenticate with BetterAuth first
+
+        try:
+            db = next(get_db())
+            row = db.execute(
+                text('SELECT "emailVerified" FROM "user" WHERE LOWER(email)=LOWER(:email)'),
+                {"email": email}
+            ).fetchone()
+            db_email_verified = bool(row[0]) if row else None
+        except Exception:
+            db_email_verified = None
+
+        if db_email_verified is False:
+            return {
+                "token": None,
+                "token_type": "Bearer",
+                "expires_at": None,
+                "id": None,
+                "email": email,
+                "name": None,
+                "role": None,
+                "profile_image_url": None,
+                "permissions": [],
+                "email_verified": False,
+            }
+
         try:
             ba = await _post_json("/api/auth/login", {"email": email, "password": password})
             user_raw = ba.get("user") or {}
-            
-            # Check email verification in BetterAuth
-            if "emailVerified" in user_raw and not bool(user_raw.get("emailVerified")):
-                raise HTTPException(status_code=403, detail="Email not verified. Please check your inbox.")
-        
+            email_verified = bool(user_raw.get("emailVerified", True))
         except HTTPException as e:
-            if e.status_code == 403:
-                raise
-            # If BetterAuth authentication fails, raise invalid credentials
+            # If BA says not verified or 403, return the pending response (no session)
+            if e.status_code == 403 or "not verified" in str(e.detail).lower():
+                return {
+                    "token": None,
+                    "token_type": "Bearer",
+                    "expires_at": None,
+                    "id": None,
+                    "email": email,
+                    "name": None,
+                    "role": None,
+                    "profile_image_url": None,
+                    "permissions": [],
+                    "email_verified": False,
+                }
+            # Generic invalid credentials
             raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
-        
-        # 2) Get or create user in Open WebUI database using existing models
+
         user = Users.get_user_by_email(email)
-        
         if not user:
-            # User authenticated in BetterAuth but doesn't exist in Open WebUI
-            # Create them using Open WebUI's Auths model
             user_count = Users.get_num_users()
             role = "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
-            
-            # Create user in Open WebUI using the existing method
-            hashed = get_password_hash(str(uuid.uuid4()))  # Random password since auth is via BetterAuth
+            hashed = get_password_hash(str(uuid.uuid4()))
             user = Auths.insert_new_auth(
                 email,
                 hashed,
                 user_raw.get("name") or email.split("@")[0],
-                user_raw.get("profile_image_url") or "/user.png",  # Default avatar
+                user_raw.get("profile_image_url") or "/user.png",
                 role,
             )
-            
             if not user:
                 raise HTTPException(500, detail="Failed to create user in local database")
 
-    # If we reach here, user is authenticated
-    if user:
-        # Generate JWT token (same as old code)
-        expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
-        expires_at = None
-        if expires_delta:
-            expires_at = int(time.time()) + int(expires_delta.total_seconds())
+    expires_delta = parse_duration(request.app.state.config.JWT_EXPIRES_IN)
+    expires_at = int(time.time()) + int(expires_delta.total_seconds()) if expires_delta else None
+    session_token = create_token(data={"id": user.id}, expires_delta=expires_delta)
+    datetime_expires_at = (
+        datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc) if expires_at else None
+    )
 
-        token = create_token(
-            data={"id": user.id},
-            expires_delta=expires_delta,
-        )
+    response.set_cookie(
+        key="token",
+        value=session_token,
+        expires=datetime_expires_at,
+        httponly=True,
+        samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
+        secure=WEBUI_SESSION_COOKIE_SECURE,
+    )
 
-        datetime_expires_at = (
-            datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
-            if expires_at
-            else None
-        )
+    user_permissions = get_permissions(user.id, request.app.state.config.USER_PERMISSIONS)
 
-        # Set the cookie token (same as old code)
-        response.set_cookie(
-            key="token",
-            value=token,
-            expires=datetime_expires_at,
-            httponly=True,
-            samesite=WEBUI_SESSION_COOKIE_SAME_SITE,
-            secure=WEBUI_SESSION_COOKIE_SECURE,
-        )
+    return {
+        "token": session_token,
+        "token_type": "Bearer",
+        "expires_at": expires_at,
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "profile_image_url": user.profile_image_url,
+        "permissions": user_permissions,
+        "email_verified": email_verified,
+    }
 
-        # Get user permissions (same as old code)
-        user_permissions = get_permissions(
-            user.id, request.app.state.config.USER_PERMISSIONS
-        )
 
-        # Return response in exact same format as old code
-        return {
-            "token": token,
-            "token_type": "Bearer",
-            "expires_at": expires_at,
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-            "profile_image_url": user.profile_image_url,
-            "permissions": user_permissions,
-        }
-    else:
-        raise HTTPException(400, detail=ERROR_MESSAGES.INVALID_CRED)
+
+##################################
+PASSWORD_POLICY = {
+    "min_length": 10,
+    "require_uppercase": True,
+    "require_lowercase": True,
+    "require_digit": True,
+    "require_special": True,
+    "forbid_spaces": True,
+}
+
+
+def _password_policy_issues(pw: str) -> list[str]:
+    """
+    Centralized password policy validation.
+    Returns list of requirement messages if password fails.
+    """
+    issues = []
+    
+    if len(pw) < PASSWORD_POLICY["min_length"]:
+        issues.append(f"at least {PASSWORD_POLICY['min_length']} characters")
+    
+    if PASSWORD_POLICY["require_uppercase"] and not re.search(r"[A-Z]", pw):
+        issues.append("one uppercase letter (A–Z)")
+    
+    if PASSWORD_POLICY["require_lowercase"] and not re.search(r"[a-z]", pw):
+        issues.append("one lowercase letter (a–z)")
+    
+    if PASSWORD_POLICY["require_digit"] and not re.search(r"\d", pw):
+        issues.append("one number (0–9)")
+    
+    if PASSWORD_POLICY["require_special"] and not re.search(r"[^A-Za-z0-9]", pw):
+        issues.append("one special character (!@#$…)")
+    
+    if PASSWORD_POLICY["forbid_spaces"] and re.search(r"\s", pw):
+        issues.append("no spaces")
+    
+    return issues
+
+
+###########################################
+
+
+
 
 
 ############################
@@ -633,10 +382,9 @@ async def signin(request: Request, response: Response, form_data: SigninForm):
 @router.post("/signup")
 async def signup(request: Request, response: Response, form_data: SignupForm):
     """
-    BetterAuth-integrated signup that matches the old auths.py logic
+    BetterAuth-integrated signup
     """
     
-    # Check if signup is allowed (same as old code)
     if WEBUI_AUTH:
         if (
             not request.app.state.config.ENABLE_SIGNUP
@@ -652,24 +400,28 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
             )
 
     email = form_data.email.lower()
+
+    pw_issues = _password_policy_issues(form_data.password)
+    if pw_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must have: {', '.join(pw_issues)}."
+        )
     
-    # Check if user already exists in Open WebUI
     if Users.get_user_by_email(email):
         raise HTTPException(400, detail=ERROR_MESSAGES.EMAIL_TAKEN)
 
     user_count = Users.get_num_users()
     
-    # Determine role (same as old code)
     role = (
         "admin" if user_count == 0 else request.app.state.config.DEFAULT_USER_ROLE
     )
 
     if user_count == 0:
-        # Disable signup after the first user is created
         request.app.state.config.ENABLE_SIGNUP = False
 
     try:
-        # 1) Create user in BetterAuth
+        # Create user in BetterAuth
         await _post_json(
             "/api/auth/signup",
             {
@@ -680,20 +432,19 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
             },
         )
         
-        # 2) Create user in Open WebUI database
+        # Create user in Open WebUI
         hashed = get_password_hash(form_data.password)
         user = Auths.insert_new_auth(
             email,
             hashed,
             form_data.name,
-            form_data.profile_image_url or "/user.png",  # Default avatar if not provided
+            form_data.profile_image_url or "/user.png",
             role,
         )
 
         if not user:
             raise HTTPException(500, detail=ERROR_MESSAGES.CREATE_USER_ERROR)
 
-        # Return success message - user needs to verify email before signin
         return {
             "status": True,
             "message": "Account created successfully. Please verify your email before signing in.",
@@ -712,16 +463,11 @@ async def signup(request: Request, response: Response, form_data: SignupForm):
 
 @router.post("/forgot-password")
 async def forgot_password(payload: dict):
-    """
-    Request password reset email
-    Body: { "email": "user@example.com" }
-    Returns: { "status": true, "message": "..."}
-    """
+    """Request password reset email"""
     email = (payload or {}).get("email", "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
 
-    # Send password reset request to BetterAuth
     try:
         await _post_json("/api/auth/forgot-password", {"email": email, "redirectTo": "/auth/reset-password/confirm"})
         return JSONResponse({
@@ -729,7 +475,6 @@ async def forgot_password(payload: dict):
             "message": "If an account exists with this email, a password reset link has been sent."
         })
     except HTTPException as e:
-        # Always return success to prevent email enumeration
         return JSONResponse({
             "status": True, 
             "message": "If an account exists with this email, a password reset link has been sent."
@@ -738,18 +483,19 @@ async def forgot_password(payload: dict):
 
 @router.post("/reset-password")
 async def reset_password(payload: dict):
-    """
-    Reset password using token from email
-    Body: { "token": "...", "password": "new_password" }
-    Returns: { "status": true, "message": "..."}
-    """
+    """Reset password using token"""
     token = (payload or {}).get("token", "")
     new_password = (payload or {}).get("password", "")
     
     if not token or not new_password:
         raise HTTPException(status_code=400, detail="Token and new password are required")
-
-    # Reset password via BetterAuth
+    
+    pw_issues = _password_policy_issues(new_password)
+    if pw_issues:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must have: {', '.join(pw_issues)}."
+        )
     try:
         await _post_json("/api/auth/reset-password", {
             "token": token,
@@ -770,10 +516,7 @@ async def reset_password(payload: dict):
 
 @router.post("/send-verification")
 async def send_verification(payload: dict):
-    """
-    Body: { "email": "user@example.com" }
-    Returns: { "status": true, "message": "..."}
-    """
+    """Send verification email"""
     email = (payload or {}).get("email", "").strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="email is required")
@@ -784,16 +527,12 @@ async def send_verification(payload: dict):
 
 @router.post("/verify-email")
 async def verify_email(payload: dict):
-    """
-    Body: { "token": "...", "email": "user@example.com" }
-    Returns: { "status": true, "message": "..."}
-    """
+    """Verify email with token"""
     token = (payload or {}).get("token", "")
     email = (payload or {}).get("email", "").strip().lower()
     if not token or not email:
         raise HTTPException(status_code=400, detail="token and email are required")
 
-    # Verify with BetterAuth
     txt = await _get_text("/api/auth/verify", {"token": token, "email": email})
     
     return JSONResponse({"status": True, "message": txt or "Email verified successfully"})
@@ -805,6 +544,6 @@ async def verify_email(payload: dict):
 
 @router.get("/signout")
 async def signout(response: Response):
-    """Sign out user by deleting the token cookie"""
+    """Sign out user"""
     response.delete_cookie("token", path="/")
     return {"status": True}
