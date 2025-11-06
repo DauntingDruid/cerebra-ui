@@ -130,7 +130,7 @@ export CHAT_ID=149df51e-28fc-431e-b9cb-39e9e408d5b0
 export USER_ID=ed449712-a886-44c2-bcc9-925f3f126614
 
 # 3) Run the bench (clears this chat’s snapshot, then does cold+multiple warm GETs)
-python3 test/chat_cache_bench.py \
+python3 test/test_files/chat_cache_bench.py \
   --chat-id "$CHAT_ID" \
   --token "$WEBUI_TOKEN" \
   --clear-redis \
@@ -140,7 +140,7 @@ python3 test/chat_cache_bench.py \
   --show-keys
 
 # Optional JSON output for CI tools
-python3 test/chat_cache_bench.py \
+python3 test/test_files/chat_cache_bench.py \
   --chat-id "$CHAT_ID" \
   --token "$WEBUI_TOKEN" \
   --warm-runs 5 \
@@ -166,7 +166,7 @@ Notes:
 pip install rich
 
 # Pretty output is used automatically if installed; disable with --no-pretty
-python3 test/chat_cache_bench.py \
+python3 test/test_files/chat_cache_bench.py \
   --chat-id "$CHAT_ID" \
   --token "$WEBUI_TOKEN" \
   --warm-runs 3 \
@@ -187,3 +187,130 @@ python3 test/chat_cache_bench.py \
 
 
 
+
+## 11) Automated chat‑cache tests (backend suite)
+
+Run a fast suite that covers speedup, TTL, LRU behavior, auth/errors, and Redis downtime.
+
+### Test Categories
+
+Tests are organized into three categories:
+
+- **Unit Tests** (t2-t7): Cache functionality and behavior
+  - `t2`: Cache snapshot creation + TTL
+  - `t3`: Warm GET stability
+  - `t4`: TTL expiry and repopulation
+  - `t5`: LRU move-to-front behavior
+  - `t6`: LRU cap eviction
+  - `t7`: Cache clearing behavior
+
+- **Performance Tests** (t1, t11-t13): Speed and latency measurements
+  - `t1`: Cold vs warm speedup
+  - `t11`: Concurrent load performance (multiple simultaneous requests)
+  - `t12`: Cache hit rate performance (consistency across multiple hits)
+  - `t13`: Large payload performance (performance with large chat data)
+
+- **Integration Tests** (t8-t10): Error handling, auth, and system resilience
+  - `t8`: Nonexistent chat error handling
+  - `t9`: Unauthorized access handling
+  - `t10`: Redis downtime fallback
+
+```bash
+# Prereqs: Redis + WebUI running; obtain CHAT_ID, USER_ID, WEBUI_TOKEN
+export WEBUI_TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjQ4N2VkMTUzLTkyNTctNGVlMS05YWJjLWMwNzE2MmE3NDkyZSJ9.yqU2RpwarO37KzuJMUNd3X_Yk38sgLHab6VyTkbtIwE'
+export USER_ID=487ed153-9257-4ee1-9abc-c07162a7492e
+export CHAT_ID=593c3625-d732-478f-9412-39241cb610f7
+export CHAT_ID_B=d361a777-df87-4e7d-adca-bc059ba2fe06
+export CHAT_ID_C=489302e9-761f-4076-a0f0-7be0a85f15df
+export CHAT_ID_D=d66f7090-8dcd-41e9-abd4-97d4b69fa33e
+
+python3 test/test_files/chat_cache_bench.py \
+  --suite all \
+  --chat-id "$CHAT_ID"
+  --user-id "$USER_ID"
+  --token "$WEBUI_TOKEN"
+  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}"
+  --recent-limit 3
+
+# Run ALL tests (t1..t10). LRU tests (t5,t6) are skipped unless extra IDs are provided.
+python3 test/test_files/chat_cache_bench.py \
+  --suite all \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}" \
+  --recent-limit 3 \
+
+# Run tests by category
+python3 test/test_files/chat_cache_bench.py \
+  --suite unit \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}"
+
+python3 test/test_files/chat_cache_bench.py \
+  --suite performance \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN"
+
+# Run specific performance tests with custom parameters
+python3 test/test_files/chat_cache_bench.py \
+  --suite t11 \
+  --chat-id "$CHAT_ID" \
+  --token "$WEBUI_TOKEN" \
+  --concurrent-requests 20 \
+  --max-latency-ms 1000
+
+python3 test/test_files/chat_cache_bench.py \
+  --suite t12 \
+  --chat-id "$CHAT_ID" \
+  --token "$WEBUI_TOKEN" \
+  --cache-hit-runs 50
+
+python3 test/test_files/chat_cache_bench.py \
+  --suite integration \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --allow-redis-restart
+
+# Run multiple categories
+python3 test/test_files/chat_cache_bench.py \
+  --suite unit,performance \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}"
+
+# Example selective run (specific tests)
+python3 test/test_files/chat_cache_bench.py \
+  --suite t1,t2,t4,t8,t9 \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN"
+
+# Redis downtime test (t10) is SAFE no-op but will stop/start the Redis container.
+# Enable it explicitly:
+python3 test/test_files/chat_cache_bench.py \
+  --suite t10 \
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --allow-redis-restart
+```
+
+Notes:
+- Tests are categorized as: **Unit** (t2-t7), **Performance** (t1, t11-t13), **Integration** (t8-t10)
+- Run by category: `--suite unit`, `--suite performance`, or `--suite integration`
+- Performance test parameters:
+  - `--concurrent-requests N`: Number of concurrent requests for t11 (default: 10)
+  - `--max-latency-ms N`: Maximum acceptable latency for t11 in ms (default: 500)
+  - `--cache-hit-runs N`: Number of cache hit requests for t12 (default: 20)
+- LRU limit defaults to 3; override with `--recent-limit` if configured differently.
+- Tests print concise PASS/FAIL/SKIP lines with category labels and return non‑zero on any failure.
+- `t5` needs ≥1 extra chat ID; `t6` needs ≥3; missing inputs will SKIP those tests.
+- For payload stability (`t3`), only basic checks are performed to avoid flakiness.
+
+---
