@@ -123,7 +123,6 @@
 	let selectedToolIds = [];
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
-	let deepResearchEnabled = false;
 	let codeInterpreterEnabled = false;
 	let selectedWorkflowIds: string[] = [];
 
@@ -247,25 +246,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 
 	let chat = null;
 
-	let deepResearchWorkflowEnabled = false;
-
-	const checkDeepResearchEnabled = async () => {
-		try {
-			const response = await fetch('/api/v1/workflows/', {
-				credentials: 'include'
-			});
-			if (response.ok) {
-				const workflows = await response.json();
-				const deepResearch = workflows.find((w: any) => 
-					w.workflow_type === 'deep_research' && w.is_active === true
-				);
-				deepResearchWorkflowEnabled = !!deepResearch;
-			}
-		} catch (error) {
-			console.error('Error checking Deep Research workflow:', error);
-			deepResearchWorkflowEnabled = false;
-		}
-	};
 	let tags = [];
 
 	let history = {
@@ -288,9 +268,8 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 
 			prompt = '';
 			files = [];
-			selectedToolIds = [];
-			webSearchEnabled = false;
-			deepResearchEnabled = false;
+		selectedToolIds = [];
+		webSearchEnabled = false;
 			imageGenerationEnabled = false;
 
 			if (chatIdProp && (await loadChat())) {
@@ -305,7 +284,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 						files = input.files;
 						selectedToolIds = input.selectedToolIds;
 						webSearchEnabled = input.webSearchEnabled;
-						deepResearchEnabled = input.deepResearchEnabled;
 						imageGenerationEnabled = input.imageGenerationEnabled;
 						codeInterpreterEnabled = input.codeInterpreterEnabled;
 						selectedWorkflowIds = input.selectedWorkflowIds;
@@ -547,8 +525,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 		window.addEventListener('message', onMessageHandler);
 		$socket?.on('chat-events', chatEventHandler);
 
-		await checkDeepResearchEnabled();
-
 		if (!$chatId) {
 			chatIdUnsubscriber = chatId.subscribe(async (value) => {
 				if (!value) {
@@ -569,7 +545,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 				files = input.files;
 				selectedToolIds = input.selectedToolIds;
 				webSearchEnabled = input.webSearchEnabled;
-				deepResearchEnabled = input.deepResearchEnabled;
 				imageGenerationEnabled = input.imageGenerationEnabled;
 				codeInterpreterEnabled = input.codeInterpreterEnabled;
 				selectedWorkflowIds = input.selectedWorkflowIds;
@@ -578,7 +553,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 				files = [];
 				selectedToolIds = [];
 				webSearchEnabled = false;
-				deepResearchEnabled = false;
 				imageGenerationEnabled = false;
 				codeInterpreterEnabled = false;
 				selectedWorkflowIds = [];
@@ -1780,10 +1754,9 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 							: false,
 					web_search:
 						$config?.features?.enable_web_search &&
-						($user?.role === 'admin' ||($user?.permissions?.features?.web_search ?? true))
+						($user?.role === 'admin' || ($user?.permissions?.features?.web_search ?? true))
 							? webSearchEnabled || ($settings?.webSearch ?? false) === 'always'
-							: false,
-					deep_research: deepResearchWorkflowEnabled ? deepResearchEnabled : false
+							: false
 				},
 				variables: {
 					...getPromptVariables(
@@ -2209,7 +2182,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 								bind:imageGenerationEnabled
 								bind:codeInterpreterEnabled
 								bind:webSearchEnabled
-								bind:deepResearchEnabled
 								bind:selectedWorkflowIds
 								bind:atSelectedModel
 								toolServers={$toolServers}
@@ -2264,7 +2236,6 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 							bind:imageGenerationEnabled
 							bind:codeInterpreterEnabled
 							bind:webSearchEnabled
-							bind:deepResearchEnabled
 							bind:selectedWorkflowIds
 							bind:atSelectedModel
 							transparentBackground={$settings?.backgroundImageUrl ?? false}

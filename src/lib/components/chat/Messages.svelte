@@ -47,7 +47,6 @@
 	export let addMessages: Function = () => {};
 
 	export let readOnly = false;
-	export let deepResearchEnabled = false;
 
 	export let bottomPadding = false;
 	export let autoScroll;
@@ -453,7 +452,6 @@
 							{addMessages}
 							{triggerScroll}
 							{readOnly}
-							{deepResearchEnabled}
 						/>
 					{/each}
 				</div>

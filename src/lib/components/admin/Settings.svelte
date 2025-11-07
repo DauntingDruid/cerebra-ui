@@ -15,7 +15,6 @@
 	import Connections from './Settings/Connections.svelte';
 	import Documents from './Settings/Documents.svelte';
 	import WebSearch from './Settings/WebSearch.svelte';
-	import DeepResearch from './Settings/DeepResearch.svelte';
 
 	import ChartBar from '../icons/ChartBar.svelte';
 	import DocumentChartBar from '../icons/DocumentChartBar.svelte';
@@ -217,59 +216,6 @@
 			<div class=" self-center">{$i18n.t('Web Search')}</div>
 		</button>
 
-		<button
-			class="px-0.5 py-2 min-w-fit rounded-lg flex-1 md:flex-none flex text-left transition {selectedTab ===
-			'deep-research'
-				? ''
-				: ' text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'}"
-			on:click={() => {
-				selectedTab = 'deep-research';
-			}}
-		>
-			<div class=" self-center mr-2">
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 48 48"
-					fill="currentColor"
-					class="size-5"
-				>
-					<path
-						d="M26 44C30.3462 40.9919 32.6627 37.9513 32.9493 34.8782C33.2359 31.805 32.308 29.5123 30.1657 28"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-					/>
-					<path
-						fill-rule="evenodd"
-						clip-rule="evenodd"
-						d="M27.6553 28.2227C30.1406 28.2227 32.1553 26.2079 32.1553 23.7227C32.1553 21.2374 30.1406 19.2227 27.6553 19.2227C25.17 19.2227 23.1553 21.2374 23.1553 23.7227C23.1553 26.2079 25.17 28.2227 27.6553 28.2227Z"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="4"
-					/>
-					<path
-						d="M24.2882 27L18.7783 32.5772L9.58594 23.3848L27.9707 4.99999L37.1631 14.1924L30.9764 20.3791"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-					<path
-						d="M6.55762 28.1357L14.4195 35.8141"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-					/>
-					<path
-						d="M6 44H42"
-						stroke="currentColor"
-						stroke-width="4"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</div>
-			<div class=" self-center">{$i18n.t('Deep Research')}</div>
-		</button>
 
 		<button
 			class="px-0.5 py-2 min-w-fit rounded-lg flex-1 md:flex-none flex text-left transition {selectedTab ===
@@ -475,12 +421,6 @@
 					await config.set(await getBackendConfig());
 				}}
 			/>
-		{:else if selectedTab === 'deep-research'}
-			<DeepResearch saveSettings={async () => {
-				toast.success($i18n.t('Settings saved successfully!'));
-				await tick();
-				await config.set(await getBackendConfig());
-			}} />
 		{:else if selectedTab === 'code-execution'}
 			<CodeExecution
 				saveHandler={async () => {

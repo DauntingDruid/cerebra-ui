@@ -39,7 +39,6 @@
 	export let addMessages;
 	export let triggerScroll;
 	export let readOnly = false;
-	export let deepResearchEnabled = false;
 </script>
 
 <div
@@ -87,7 +86,6 @@
 				{regenerateResponse}
 				{addMessages}
 				{readOnly}
-				{deepResearchEnabled}
 			/>
 		{:else}
 			<MultiResponseMessages

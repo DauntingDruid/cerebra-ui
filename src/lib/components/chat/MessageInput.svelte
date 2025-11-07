@@ -85,11 +85,10 @@
 
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
-	export let deepResearchEnabled = false;
 	export let codeInterpreterEnabled = false;
 
 	// Reactive: Disable other features when workflows are enabled
-	$: if (selectedWorkflowIds.length > 0 || deepResearchEnabled) {
+$: if (selectedWorkflowIds.length > 0) {
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
@@ -102,7 +101,6 @@
 		selectedWorkflowIds,
 		imageGenerationEnabled,
 		webSearchEnabled,
-		deepResearchEnabled,
 		codeInterpreterEnabled,
 	});
 
@@ -1147,7 +1145,6 @@
 												<!-- Workflow selector button - positioned before web search -->
 												<WorkflowMenu
 													bind:selectedWorkflowIds
-													bind:deepResearchEnabled
 													onClose={() => {
 														showWorkflows = false;
 													}}
@@ -1155,7 +1152,7 @@
 													<Tooltip content={$i18n.t('Select Workflows')} placement="top">
 														<button
 															type="button"
-															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowIds.length > 0 || deepResearchEnabled
+															class="px-1.5 @xl:px-2.5 py-1.5 flex gap-1.5 items-center text-sm rounded-lg font-medium transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden border {selectedWorkflowIds.length > 0
 																? 'bg-yellow-100 dark:bg-yellow-500/20 border-yellow-400/20 text-yellow-700 dark:text-yellow-300'
 																: 'bg-transparent border-transparent text-gray-600 dark:text-gray-300 border-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'}"
 														>
@@ -1175,7 +1172,6 @@
 																// Disable other features when enabling web search
 																if (!webSearchEnabled) {
 																	selectedWorkflowIds = [];
-																	deepResearchEnabled = false;
 																	imageGenerationEnabled = false;
 																	codeInterpreterEnabled = false;
 																}
@@ -1205,7 +1201,6 @@
 																// Disable other features when enabling image generation
 																if (!imageGenerationEnabled) {
 																	selectedWorkflowIds = [];
-																	deepResearchEnabled = false;
 																	webSearchEnabled = false;
 																	codeInterpreterEnabled = false;
 																}
@@ -1232,7 +1227,6 @@
 																// Disable other features when enabling code interpreter
 																if (!codeInterpreterEnabled) {
 																	selectedWorkflowIds = [];
-																	deepResearchEnabled = false;
 																	webSearchEnabled = false;
 																	imageGenerationEnabled = false;
 																}

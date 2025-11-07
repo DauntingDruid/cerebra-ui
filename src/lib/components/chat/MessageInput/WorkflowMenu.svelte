@@ -11,12 +11,10 @@
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import Switch from '$lib/components/common/Switch.svelte';
 	import WorkflowIcon from '$lib/components/icons/WorkflowIcon.svelte';
-	import DeepResearchIcon from '$lib/components/icons/DeepResearchIcon.svelte';
 
 	const i18n = getContext('i18n');
 
 	export let selectedWorkflowIds: string[] = [];
-	export let deepResearchEnabled: boolean = false;
 	export let onClose: Function;
 
 	let workflows: Record<string, any> = {};
@@ -24,14 +22,10 @@
 	let loading = false;
 	let hasInitialized = false;
 
-	// Update workflows enabled state when selectedWorkflowIds or deepResearchEnabled changes
+// Update workflows enabled state when selectedWorkflowIds changes
 	$: if (Object.keys(workflows).length > 0) {
 		workflows = Object.entries(workflows).reduce((acc, [id, workflow]) => {
-			if (workflow.workflow_type === 'deep_research') {
-				acc[id] = { ...workflow, enabled: deepResearchEnabled };
-			} else {
-				acc[id] = { ...workflow, enabled: selectedWorkflowIds.includes(id) };
-			}
+			acc[id] = { ...workflow, enabled: selectedWorkflowIds.includes(id) };
 			return acc;
 		}, {} as Record<string, any>);
 	}
@@ -74,28 +68,10 @@
 				const activeWorkflows = backendWorkflows.filter((w: any) => w.is_active === true);
 				console.log('[WorkflowMenu] Active workflows:', activeWorkflows);
 
-				const deepResearchWorkflow = activeWorkflows.find((w: any) => 
-					w.workflow_type === 'deep_research'
-				);
-				console.log('[WorkflowMenu] Deep Research workflow found:', deepResearchWorkflow);
-
-				const otherWorkflows = activeWorkflows.filter((w: any) => {
-					const isDeepResearch = w.name === 'Deep Research' || w.workflow_type === 'deep_research';
-					return !isDeepResearch;
-				});
+				const otherWorkflows = activeWorkflows;
 				console.log('[WorkflowMenu] Other workflows (after filtering):', otherWorkflows);
 
-				// Create a new object to force Svelte reactivity
 				const newWorkflows: Record<string, any> = {};
-
-				if (deepResearchWorkflow) {
-					newWorkflows[deepResearchWorkflow.id] = {
-						name: deepResearchWorkflow.name,
-						description: deepResearchWorkflow.description || '',
-						workflow_type: deepResearchWorkflow.workflow_type,
-						enabled: deepResearchEnabled
-					};
-				}
 
 				otherWorkflows.forEach((workflow: any) => {
 					newWorkflows[workflow.id] = {
@@ -120,15 +96,7 @@
 				})));
 				console.log('[WorkflowMenu] workflows object keys count:', Object.keys(workflows).length);
 				
-				// Verify Deep Research is not in the list if it should be hidden
-				const deepResearchInList = Object.values(workflows).some((w: any) => 
-					w.workflow_type === 'deep_research'
-				);
-				if (deepResearchInList) {
-					console.warn('[WorkflowMenu] WARNING: Deep Research is still in workflows list!');
-				} else {
-					console.log('[WorkflowMenu] ✓ Deep Research correctly excluded from list');
-				}
+				console.log('[WorkflowMenu] ✓ Workflows loaded');
 			} else {
 				console.error('Failed to fetch workflows:', response.statusText);
 				toast.error('Failed to load workflows');
@@ -186,16 +154,12 @@
 									className="flex flex-1 gap-2.5 items-center"
 								>
 									<div class="shrink-0">
-										{#if workflows[workflowId].workflow_type === 'deep_research'}
-											<DeepResearchIcon className="size-4" strokeWidth="1.75" />
-										{:else}
-											<WorkflowIcon className="size-4" strokeWidth="1.75" />
-										{/if}
+										<WorkflowIcon className="size-4" strokeWidth="1.75" />
 									</div>
 
 									<div class="flex flex-col items-start gap-0.5">
 										<div class="truncate font-medium">{workflows[workflowId].name}</div>
-										{#if workflows[workflowId].workflow_type && workflows[workflowId].workflow_type !== 'deep_research'}
+										{#if workflows[workflowId].workflow_type}
 											<div class="text-xs text-gray-500 dark:text-gray-400 capitalize">
 												{workflows[workflowId].workflow_type.replace('_', ' ')}
 											</div>
@@ -210,21 +174,12 @@
 									on:change={async (e) => {
 										const state = e.detail;
 										
-										if (workflows[workflowId].workflow_type === 'deep_research') {
+										await tick();
+										if (state) {
 											// Only allow one workflow at a time
-											if (state) {
-												selectedWorkflowIds = [];
-											}
-											deepResearchEnabled = state;
+											selectedWorkflowIds = [workflowId];
 										} else {
-											await tick();
-											if (state) {
-												// Only allow one workflow at a time
-												selectedWorkflowIds = [workflowId];
-												deepResearchEnabled = false;
-											} else {
-												selectedWorkflowIds = selectedWorkflowIds.filter((id) => id !== workflowId);
-											}
+											selectedWorkflowIds = selectedWorkflowIds.filter((id) => id !== workflowId);
 										}
 									}}
 								/>

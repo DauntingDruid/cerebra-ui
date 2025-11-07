@@ -31,12 +31,10 @@
   let filteredCredentials = [];
   $: filteredWorkflows = workflows.filter(
     (w) =>
-      // Hide deep_research workflows as they are managed in Settings
-      w.workflow_type !== 'deep_research' &&
-      (query === '' ||
+      query === '' ||
       w.name.toLowerCase().includes(query.toLowerCase()) ||
       w.workflow_type.toLowerCase().includes(query.toLowerCase()) ||
-      (w.description && w.description.toLowerCase().includes(query.toLowerCase())))
+      (w.description && w.description.toLowerCase().includes(query.toLowerCase()))
   );
   $: filteredCredentials = credentials.filter(
     (c) =>
