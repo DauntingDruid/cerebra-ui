@@ -1483,11 +1483,20 @@ const pollWorkflowResult = async (executionId: string, chatId: string) => {
 		chatInput?.focus();
 
 		saveSessionSelectedModels();
-		
+
 		// Execute workflow if selected (hybrid mode)
 		if (selectedWorkflowIds.length > 0) {
+			let workflowChatId = $chatId;
+
+			// Mirror sendPrompt new chat handling so chat_id is never empty
+			if (history.messages[userMessageId].parentId === null && !$chatId) {
+				workflowChatId = await initChatHandler(history);
+			}
+
+			await saveChatHandler(workflowChatId, history);
+
 			for (const workflowId of selectedWorkflowIds) {
-				await executeWorkflow(workflowId, userPrompt, $chatId, _files);
+				await executeWorkflow(workflowId, userPrompt, workflowChatId, _files);
 			}
 			// When workflow is active, SKIP the model entirely
 			console.log('Workflow executed - skipping model');
