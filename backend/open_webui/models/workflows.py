@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, ForeignKey, Index
+from sqlalchemy import Column, String, Boolean, Text, TIMESTAMP, ForeignKey, Index, or_
 from sqlalchemy.sql import func
 from open_webui.internal.db import Base, Session
 from open_webui.utils.crypto import encrypt_str, decrypt_str
@@ -24,11 +24,13 @@ class Workflow(Base):
     workflow_type = Column(String(50), nullable=False)  # 'langflow', 'n8n', 'langchain', 'custom'
     config = Column(Text, nullable=False)  # JSON stored as text
     is_active = Column(Boolean, default=True)
+    is_public = Column(Boolean, default=False)  # ✅ ADDED: Enable resource sharing
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         Index('idx_workflows_user_id', 'user_id'),
+        Index('idx_workflows_is_public', 'is_public'),  # ✅ ADDED: Index for performance
     )
 
 
@@ -82,6 +84,7 @@ class WorkflowModel(BaseModel):
     workflow_type: str
     config: Dict[str, Any]
     is_active: bool = True
+    is_public: bool = False  # ✅ ADDED: Resource visibility flag
     created_at: datetime
     updated_at: datetime
 
@@ -95,6 +98,7 @@ class WorkflowForm(BaseModel):
     workflow_type: str = Field(..., pattern="^(langflow|n8n|langchain|deep_research|custom)$")
     config: Dict[str, Any]
     is_active: bool = True
+    is_public: bool = False  # ✅ ADDED: Allow users to make workflows public
 
 
 class WorkflowCredentialModel(BaseModel):
@@ -168,6 +172,7 @@ def _workflow_to_model_dict(w: Workflow) -> Dict[str, Any]:
         "workflow_type": w.workflow_type,
         "config": _json_to_dict(w.config),
         "is_active": w.is_active,
+        "is_public": getattr(w, "is_public", False),  # ✅ ADDED: Include is_public in output
         "created_at": w.created_at,
         "updated_at": w.updated_at,
     }
@@ -189,6 +194,7 @@ class Workflows:
                 workflow_type=form_data.workflow_type,
                 config=_dict_to_json(form_data.config),
                 is_active=form_data.is_active,
+                is_public=form_data.is_public,  # ✅ ADDED: Set is_public from form
             )
             Session.add(workflow)
             Session.commit()
@@ -202,7 +208,33 @@ class Workflows:
 
     @staticmethod
     def get_workflows_by_user_id(user_id: str) -> List[WorkflowModel]:
+        """Get workflows owned by specific user (legacy method - kept for compatibility)"""
         workflows = Session.query(Workflow).filter(Workflow.user_id == user_id).all()
+        return [WorkflowModel.model_validate(_workflow_to_model_dict(w)) for w in workflows]
+
+    @staticmethod
+    def get_workflows_for_user(user_id: str, user_role: str) -> List[WorkflowModel]:
+        """
+        ✅ NEW METHOD: Get workflows accessible to user based on role and visibility.
+        
+        Access rules:
+        - Admin: sees all workflows
+        - Regular user: sees public workflows + their own private workflows
+        
+        This enables resource sharing while maintaining privacy.
+        """
+        if user_role == "admin":
+            # Admin sees everything
+            workflows = Session.query(Workflow).all()
+        else:
+            # User sees public workflows OR their own workflows
+            workflows = Session.query(Workflow).filter(
+                or_(
+                    Workflow.is_public == True,
+                    Workflow.user_id == user_id
+                )
+            ).all()
+        
         return [WorkflowModel.model_validate(_workflow_to_model_dict(w)) for w in workflows]
 
     @staticmethod
@@ -228,6 +260,7 @@ class Workflows:
             w.workflow_type = form_data.workflow_type
             w.config = _dict_to_json(form_data.config)
             w.is_active = form_data.is_active
+            w.is_public = form_data.is_public  # ✅ ADDED: Update is_public from form
             w.updated_at = datetime.now()
 
             Session.commit()

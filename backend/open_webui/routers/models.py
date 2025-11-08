@@ -24,11 +24,66 @@ router = APIRouter()
 
 
 @router.get("/", response_model=list[ModelUserResponse])
-async def get_models(id: Optional[str] = None, user=Depends(get_verified_user)):
+async def get_models(id: Optional[str] = None, user=Depends(get_verified_user), request: Request = None):
+    """
+    ✅ UPDATED: Get models accessible to user
+    Returns database models (with is_public) + models from API connections
+    """
+    # Get database models based on role
     if user.role == "admin":
-        return Models.get_models()
+        db_models = Models.get_models()
     else:
-        return Models.get_models_by_user_id(user.id)
+        db_models = Models.get_models_by_user_id(user.id, permission="read")
+    
+    # ✅ NEW: Get connection models from OpenAI/Ollama APIs
+    # These models are available to ALL users (not just admin)
+    connection_models = []
+    
+    if request:
+        try:
+            # Import the function from openai router
+            from open_webui.routers.openai import get_all_models
+            
+            # Fetch models from API connections (OpenAI, Gemini, Ollama, etc.)
+            api_models_response = await get_all_models(request, user)
+            
+            if api_models_response and "data" in api_models_response:
+                # Convert API models to ModelUserResponse format
+                for model in api_models_response["data"]:
+                    # Map the API model format to database model format
+                    connection_models.append({
+                        "id": model.get("id"),
+                        "name": model.get("name", model.get("id")),
+                        "user_id": "system",  # Mark as system model
+                        "base_model_id": model.get("id"),
+                        "meta": {
+                            "description": f"From {model.get('owned_by', 'external')} API",
+                            "profile_image_url": "/favicon.png",
+                        },
+                        "params": {},
+                        "is_active": True,
+                        "is_public": True,  # API models are public by default
+                        "access_control": None,
+                        "created_at": 0,
+                        "updated_at": 0,
+                    })
+        except Exception as e:
+            # Log error but don't fail - just return database models
+            import logging
+            logging.error(f"Failed to fetch API connection models: {e}")
+    
+    # ✅ Combine database models + connection models
+    all_models = db_models + connection_models
+    
+    # Remove duplicates (prefer database models over API models)
+    seen_ids = set()
+    unique_models = []
+    for model in all_models:
+        if model["id"] not in seen_ids:
+            unique_models.append(model)
+            seen_ids.add(model["id"])
+    
+    return unique_models
 
 
 ###########################
@@ -91,6 +146,7 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user)):
         if (
             user.role == "admin"
             or model.user_id == user.id
+            or model.is_public  # ✅ ADDED: Allow access to public models
             or has_access(user.id, "read", model.access_control)
         ):
             return model

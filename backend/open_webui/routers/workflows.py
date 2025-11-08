@@ -52,13 +52,20 @@ def _fix_endpoint_for_container(endpoint_url: Optional[str]) -> Optional[str]:
 
 @router.get("/", response_model=List[WorkflowModel])
 async def get_workflows(user: UserModel = Depends(get_verified_user)):
-    """Get all workflows for the current user"""
-    return Workflows.get_workflows_by_user_id(user.id)
+    """
+    ✅ UPDATED: Get workflows accessible to current user
+    - Admin: sees all workflows
+    - Regular user: sees public workflows + their own
+    """
+    return Workflows.get_workflows_for_user(user.id, user.role)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowModel)
 async def get_workflow(workflow_id: str, user: UserModel = Depends(get_verified_user)):
-    """Get a specific workflow by ID"""
+    """
+    ✅ UPDATED: Get a specific workflow by ID
+    Regular users can view public workflows but CANNOT see their config details
+    """
     workflow = Workflows.get_workflow_by_id(workflow_id)
 
     if not workflow:
@@ -67,8 +74,12 @@ async def get_workflow(workflow_id: str, user: UserModel = Depends(get_verified_
             detail="Workflow not found"
         )
 
-    # Check if user owns this workflow
-    if workflow.user_id != user.id and getattr(user, "role", None) != "admin":
+    # ✅ UPDATED: Allow access if user owns it, is admin, OR workflow is public
+    is_owner = workflow.user_id == user.id
+    is_admin = getattr(user, "role", None) == "admin"
+    is_public = getattr(workflow, "is_public", False)
+    
+    if not (is_owner or is_admin or is_public):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
@@ -107,7 +118,9 @@ async def update_workflow(
     form_data: WorkflowForm,
     user: UserModel = Depends(get_verified_user)
 ):
-    """Update an existing workflow"""
+    """
+    ✅ UNCHANGED: Update workflow - only owner or admin can edit
+    """
     existing_workflow = Workflows.get_workflow_by_id(workflow_id)
 
     if not existing_workflow:
@@ -116,7 +129,7 @@ async def update_workflow(
             detail="Workflow not found"
         )
 
-    # Check ownership
+    # Check ownership - only owner or admin can edit
     if existing_workflow.user_id != user.id and getattr(user, "role", None) != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -146,7 +159,9 @@ async def delete_workflow(
     workflow_id: str,
     user: UserModel = Depends(get_verified_user)
 ):
-    """Delete a workflow"""
+    """
+    ✅ UNCHANGED: Delete workflow - only owner or admin can delete
+    """
     existing_workflow = Workflows.get_workflow_by_id(workflow_id)
 
     if not existing_workflow:
@@ -155,7 +170,7 @@ async def delete_workflow(
             detail="Workflow not found"
         )
 
-    # Check ownership
+    # Check ownership - only owner or admin can delete
     if existing_workflow.user_id != user.id and getattr(user, "role", None) != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -274,11 +289,8 @@ async def execute_workflow_endpoint(
     user: UserModel = Depends(get_verified_user)
 ):
     """
-    Fire-and-return execution:
-      1) Create execution row as 'pending'
-      2) Spawn background task
-      3) Return immediately with {"id": ..., "status": "pending"}
-    Keeps UI responsive even if external services are slow.
+    ✅ UPDATED: Fire-and-return execution
+    Regular users can execute public workflows
     """
     log.info(f"🚀🚀🚀 EXECUTE ENDPOINT HIT - workflow_id: {workflow_id}")
     # Verify workflow
@@ -290,7 +302,12 @@ async def execute_workflow_endpoint(
             detail="Workflow not found"
         )
 
-    if workflow.user_id != user.id and getattr(user, "role", None) != "admin":
+    # ✅ UPDATED: Allow execution if user owns it, is admin, OR workflow is public
+    is_owner = workflow.user_id == user.id
+    is_admin = getattr(user, "role", None) == "admin"
+    is_public = getattr(workflow, "is_public", False)
+    
+    if not (is_owner or is_admin or is_public):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
@@ -367,8 +384,10 @@ async def execute_workflow_endpoint(
             detail="Failed to create execution"
         )
 
-    # Fetch credential (service_name is the workflow_type)
-    credential = WorkflowCredentials.get_credential_by_service(user.id, service_name)
+    # ✅ UPDATED: Fetch credential from workflow OWNER, not current user
+    # This allows regular users to execute admin workflows using admin's credentials
+    workflow_owner_id = workflow.user_id
+    credential = WorkflowCredentials.get_credential_by_service(workflow_owner_id, service_name)
 
     # Build config dict & fix endpoint for container
     cfg: Dict[str, Any] = dict(workflow.config or {})

@@ -21,8 +21,8 @@ services:
       - ENABLE_CHAT_CACHE=true
       - CHAT_CACHE_MAX_RECENT=3
       - CHAT_CACHE_TTL_SECONDS=900
-      - VITE_TURNSTILE_SITE_KEY=
-      - TURNSTILE_SECRET_KEY=
+      - VITE_TURNSTILE_SITE_KEY=0x4AAAAAAB_PiFsl7ULRbFMP
+      - TURNSTILE_SECRET_KEY=0x4AAAAAAB_PiECN3dcLlCc-izpMEjuEw_g
 
     volumes:
       - ./build:/app/build:ro

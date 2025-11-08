@@ -203,6 +203,7 @@ class ModelsTable:
             model
             for model in models
             if model.user_id == user_id
+            or model.is_public
             or has_access(user_id, permission, model.access_control)
         ]
 
