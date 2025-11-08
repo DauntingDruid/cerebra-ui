@@ -1,0 +1,29 @@
+# Testing Framework
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# HTTP Testing
+httpx==0.25.2
+aiohttp==3.9.1
+
+# FastAPI Testing
+fastapi==0.104.1
+starlette==0.27.0
+
+# Database Testing (if needed)
+sqlalchemy==2.0.23
+alembic==1.13.1
+
+# Code Quality
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+pylint==3.0.3
+
+# Performance Testing (optional)
+pytest-benchmark==4.0.0
+
+# Reporting
+pytest-html==4.1.1
