@@ -105,20 +105,25 @@ def touch_recent(app, user_id: str, chat_id: str) -> None:
         return
     key = _recent_key(user_id)
     try:
-        # Remove existing occurrence
-        r.lrem(key, 0, chat_id)
-        # Push to head
-        r.lpush(key, chat_id)
-        # Trim and evict extra
+        ttl = int(app.state.config.CHAT_CACHE_TTL_SECONDS)
         max_recent = int(app.state.config.CHAT_CACHE_MAX_RECENT)
-        length = r.llen(key)
-        while length and length > max_recent:
-            evicted = r.rpop(key)
-            if evicted:
-                r.delete(_chat_key(evicted))
-            length = r.llen(key)
-        # Set a TTL on the list so it garbage-collects eventually
-        r.expire(key, int(app.state.config.CHAT_CACHE_TTL_SECONDS))
+
+        # 1) Remove duplicate and push to head in a single pipeline round-trip
+        p = r.pipeline()
+        p.lrem(key, 0, chat_id)
+        p.lpush(key, chat_id)
+        p.expire(key, ttl)
+        p.execute()
+
+        # 2) Fetch overflow tail beyond max_recent (0-based indexing)
+        tail = r.lrange(key, max_recent, -1)
+        if tail:
+            # 3) Trim list and delete evicted snapshots in one batch
+            p2 = r.pipeline()
+            p2.ltrim(key, 0, max_recent - 1)
+            for evicted in tail:
+                p2.delete(_chat_key(evicted))
+            p2.execute()
     except Exception:
         pass
 

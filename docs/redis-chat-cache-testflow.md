@@ -101,6 +101,9 @@ docker exec -it open-webui env | egrep 'REDIS_URL|ENABLE_CHAT_CACHE|CHAT_CACHE_'
 
 # Confirm the chat route was hit (replace with your CHAT_ID)
 docker logs -n 400 open-webui | grep -E "/api/v1/chats/$CHAT_ID|ERROR|Traceback"
+
+# Clear all chat cache keys
+docker exec -it redis sh -lc "redis-cli --scan --pattern 'open-webui:chat-cache:*' | xargs -r redis-cli DEL"
 ```
 
 If the recent list is empty, make sure you actually opened each chat page at least once in the browser.
@@ -226,11 +229,12 @@ export CHAT_ID_D=d66f7090-8dcd-41e9-abd4-97d4b69fa33e
 
 python3 test/test_files/chat_cache_bench.py \
   --suite all \
-  --chat-id "$CHAT_ID"
-  --user-id "$USER_ID"
-  --token "$WEBUI_TOKEN"
-  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}"
-  --recent-limit 3
+  --chat-id "$CHAT_ID" \
+  --user-id "$USER_ID" \
+  --token "$WEBUI_TOKEN" \
+  --extra-chat-ids "${CHAT_ID_B},${CHAT_ID_C},${CHAT_ID_D}" \
+  --recent-limit 3 \
+  --allow-redis-restart
 
 # Run ALL tests (t1..t10). LRU tests (t5,t6) are skipped unless extra IDs are provided.
 python3 test/test_files/chat_cache_bench.py \
@@ -312,5 +316,3 @@ Notes:
 - Tests print concise PASS/FAIL/SKIP lines with category labels and return non‑zero on any failure.
 - `t5` needs ≥1 extra chat ID; `t6` needs ≥3; missing inputs will SKIP those tests.
 - For payload stability (`t3`), only basic checks are performed to avoid flakiness.
-
----
