@@ -18,7 +18,6 @@ from open_webui.config import ENABLE_ADMIN_CHAT_ACCESS, ENABLE_ADMIN_EXPORT
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.env import SRC_LOG_LEVELS
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 
@@ -374,8 +373,7 @@ async def get_chat_by_id(id: str, request: Request, user=Depends(get_verified_us
             touch_recent(request.app, user.id, id)
         except Exception:
             pass
-        # Fast path: return cached JSON directly to avoid model reconstruction cost
-        return JSONResponse(content=cached)
+        return ChatResponse(**cached)
 
     chat = Chats.get_chat_by_id_and_user_id(id, user.id)
 
