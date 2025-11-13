@@ -327,6 +327,24 @@ CHAT_CACHE_TTL_SECONDS = PersistentConfig(
 
 
 ####################################
+# API Cache (MODELS LIST)
+####################################
+
+# Redis Model Caching: persistent flags controlling /api/models cache enablement and TTL
+ENABLE_API_CACHE = PersistentConfig(
+    "ENABLE_API_CACHE",
+    "cache.api.enable",
+    os.environ.get("ENABLE_API_CACHE", "True").lower() == "true",
+)
+
+MODELS_LIST_TTL_SECONDS = PersistentConfig(
+    "MODELS_LIST_TTL_SECONDS",
+    "cache.models.ttl",
+    int(os.environ.get("MODELS_LIST_TTL_SECONDS", "300")),
+)
+
+
+####################################
 # WEBUI_AUTH (Required for security)
 ####################################
 

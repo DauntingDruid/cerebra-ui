@@ -1,4 +1,6 @@
 import time
+import json
+import hashlib
 import logging
 import sys
 
@@ -61,6 +63,22 @@ async def get_all_base_models(request: Request, user: UserModel = None):
 
 
 async def get_all_models(request, user: UserModel = None):
+    # Redis Model Caching: cache merged /api/models list with TTL; invalidated on provider/model config changes
+    # Redis-backed cache for merged models list used by /api/models
+    r = getattr(request.app.state.config, "_redis", None)
+    cache_ok = bool(r and getattr(request.app.state.config, "ENABLE_API_CACHE", False))
+    cache_key = "open-webui:api:models:merged:v1"
+    if cache_ok:
+        try:
+            cached = r.get(cache_key)
+            if cached:
+                models = json.loads(cached)
+                request.app.state.MODELS = {model["id"]: model for model in models}
+                print("[ApiCache] HIT models (merged)")
+                return models
+        except Exception:
+            pass
+
     models = await get_all_base_models(request, user=user)
 
     # If there are no models, return an empty list
@@ -224,6 +242,13 @@ async def get_all_models(request, user: UserModel = None):
     log.debug(f"get_all_models() returned {len(models)} models")
 
     request.app.state.MODELS = {model["id"]: model for model in models}
+    if cache_ok:
+        try:
+            ttl = int(getattr(request.app.state.config, "MODELS_LIST_TTL_SECONDS", 300) or 300)
+            r.setex(cache_key, ttl, json.dumps(models))
+            print(f"[ApiCache] SET models (merged) ttl={ttl}s")
+        except Exception:
+            pass
     return models
 
 

@@ -21,8 +21,8 @@ services:
       - ENABLE_CHAT_CACHE=true
       - CHAT_CACHE_MAX_RECENT=3
       - CHAT_CACHE_TTL_SECONDS=900
-      - VITE_TURNSTILE_SITE_KEY=0x4AAAAAAB_PiFsl7ULRbFMP
-      - TURNSTILE_SECRET_KEY=0x4AAAAAAB_PiECN3dcLlCc-izpMEjuEw_g
+      - VITE_TURNSTILE_SITE_KEY=0x4AAAAAACAsEFOMgY1ILpx_
+      - TURNSTILE_SECRET_KEY=0x4AAAAAACAsEK2uzhhRDddj-9mHZ1VJIKY
 
     volumes:
       - ./build:/app/build:ro
@@ -31,6 +31,20 @@ services:
     networks:
       - default
       - cerebra_net
+
+  # Dev override for Redis to avoid disk persistence issues (RDB/AOF disabled)
+  # redis:
+  #   command:
+  #     - redis-server
+  #     - --save
+  #     - ''
+  #     - --appendonly
+  #     - 'no'
+  #     - --stop-writes-on-bgsave-error
+  #     - 'no'
+  #   networks:
+  #     - default
+  #     - cerebra_net
 
   langflow:
     image: langflowai/langflow:latest

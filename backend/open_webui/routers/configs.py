@@ -63,6 +63,17 @@ async def set_direct_connections_config(
     request.app.state.config.ENABLE_DIRECT_CONNECTIONS = (
         form_data.ENABLE_DIRECT_CONNECTIONS
     )
+
+    # Redis Model Caching: invalidate models cache when Direct Connections feature is toggled
+    try:
+        r = getattr(request.app.state.config, "_redis", None)
+        if r:
+            for k in r.scan_iter("open-webui:api:models:*"):
+                r.delete(k)
+            print("[ApiCache] DEL models")
+    except Exception:
+        pass
+
     return {
         "ENABLE_DIRECT_CONNECTIONS": request.app.state.config.ENABLE_DIRECT_CONNECTIONS,
     }
