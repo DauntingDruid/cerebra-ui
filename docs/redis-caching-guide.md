@@ -187,8 +187,169 @@ python3 test/test_files/chat_cache_bench.py \
 
 
 
+<!-- Redis Model Caching: documentation + test steps for /api/models caching -->
+## 10) Models list cache – verification (Redis-backed /api/models)
 
-## 11) Automated chat‑cache tests (backend suite)
+<!-- Files where changes were made: 
+- backend/open_webui/config.py
+- backend/open_webui/main.py
+- backend/open_webui/utils/models.py
+- backend/open_webui/routers/openai.py
+- backend/open_webui/routers/ollama.py
+- backend/open_webui/routers/models.py
+- backend/open_webui/routers/configs.py
+- docs/redis-caching-guide.md
+ -->
+
+Validate the Redis cache for the aggregated models list with TTL, invalidation, and fallback.
+
+### A) Authenticated calls (required)
+
+```bash
+# 1) Get your cookie token from the browser
+#    DevTools → Application → Cookies → token → copy value
+export token='<your_jwt_from_browser_cookie>'
+
+# 2) Call twice (authenticated)
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null
+
+# 3) Check logs – expect SET then HIT
+docker logs -n 200 open-webui | egrep 'ApiCache|HIT|SET|DEL'
+# Example:
+# [ApiCache] SET models (merged) ttl=300s
+# [ApiCache] HIT models (merged)
+```
+
+Tip: 401/403 means the request wasn’t authenticated; pass the cookie header exactly as shown (don’t use a literal "<JWT>").
+
+### B) Presence + TTL in Redis
+
+```bash
+docker exec -it redis redis-cli KEYS 'open-webui:api:models:*'
+docker exec -it redis redis-cli TTL open-webui:api:models:merged:v1
+```
+
+### C) Expiry then repopulate
+
+```bash
+docker exec -it redis redis-cli EXPIRE open-webui:api:models:merged:v1 1
+sleep 2
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null   # expect SET
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null   # expect HIT
+docker logs -n 200 open-webui | egrep 'ApiCache|HIT|SET'
+```
+
+### D) Invalidation on write
+
+Any model create/update/toggle/delete clears the cache.
+
+- From the UI: add/update/toggle/delete a custom model
+- Expect to see:
+  - `[ApiCache] DEL models`
+  - Next GET shows `[ApiCache] SET models (merged) ...`, then subsequent GETs show `HIT`
+
+### E) Redis down fallback (safe)
+
+```bash
+docker stop redis
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null   # should still 200 (no cache logs)
+docker start redis
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null   # expect SET
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null   # expect HIT
+```
+
+### F) Concurrency (ensure hits dominate)
+
+```bash
+seq 1 10 | xargs -n1 -P10 -I{} curl -s -H "Cookie: token=$token" http://localhost:3000/api/models >/dev/null
+docker logs -n 300 open-webui | egrep 'ApiCache'
+# Expect one SET and many HITs
+```
+
+Notes:
+- If disk space is tight, Redis persistence can trigger MISCONF and block writes. For local dev, you can disable persistence via docker-compose override (save "", appendonly no, stop-writes-on-bgsave-error no).
+- TTL defaults to 300s and can be adjusted with `MODELS_LIST_TTL_SECONDS`.
+
+
+<!-- Redis Workflow Caching: documentation + test steps for /api/v1/workflows caching -->
+## 11) Workflows list cache – verification (Redis-backed /api/v1/workflows)
+
+<!-- Files where changes were made:
+- backend/open_webui/config.py
+- backend/open_webui/main.py
+- backend/open_webui/routers/workflows.py
+- docs/redis-caching-guide.md
+-->
+
+Validate the Redis cache for the workflows list with per-user/role scoping, TTL, invalidation on create/update/delete, and safe fallback.
+
+### A) Authenticated calls (required)
+
+```bash
+# 1) Get your cookie token from the browser
+#    DevTools → Application → Cookies → token → copy value
+export token='<your_jwt_from_browser_cookie>'
+
+# 2) Call twice (authenticated)
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null
+
+# 3) Check logs – expect SET then HIT
+docker logs -n 200 open-webui | egrep 'ApiCache|workflows|HIT|SET|DEL'
+# Example:
+# [ApiCache] SET workflows ttl=300s
+# [ApiCache] HIT workflows
+```
+
+Tip: 401/403 means the request wasn't authenticated; pass the cookie header exactly as shown. The cache is scoped per user and role (key format: `open-webui:api:workflows:list:v1:{role}:{user_id}`).
+
+### B) Presence + TTL in Redis
+
+```bash
+docker exec -it redis redis-cli KEYS 'open-webui:api:workflows:list:*'
+docker exec -it redis redis-cli TTL '<key_from_above>'
+```
+
+The cache key includes role and user_id so different users/roles have separate cached lists.
+
+### C) Expiry then repopulate
+
+```bash
+# Find your user's key (replace with actual key from step B)
+docker exec -it redis redis-cli EXPIRE 'open-webui:api:workflows:list:v1:admin:<user_id>' 1
+sleep 2
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null   # expect SET
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null   # expect HIT
+docker logs -n 200 open-webui | egrep 'ApiCache|workflows|HIT|SET'
+```
+
+### D) Invalidation on write
+
+Any workflow create/update/delete clears all workflow cache keys (per-user scoped).
+
+- From the UI: create/update/delete a workflow at `http://localhost:3000/workspace/workflows`
+- Expect to see:
+  - `[ApiCache] DEL workflows`
+  - Next GET shows `[ApiCache] SET workflows ttl=300s ...`, then subsequent GETs show `HIT`
+
+### E) Redis down fallback (safe)
+
+```bash
+docker stop redis
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null   # should still 200 (no cache logs)
+docker start redis
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null   # expect SET
+curl -s -H "Cookie: token=$token" http://localhost:3000/api/v1/workflows/ >/dev/null   # expect HIT
+```
+
+Notes:
+- TTL defaults to 300s and can be adjusted with `WORKFLOWS_LIST_TTL_SECONDS`.
+- Cache is scoped per user/role for access control correctness (admin sees all, users see their own + public).
+- Invalidation on create/update/delete ensures stale data is cleared immediately.
+
+
+## 12) Automated chat‑cache tests (backend suite)
 
 Run a fast suite that covers speedup, TTL, LRU behavior, auth/errors, and Redis downtime.
 

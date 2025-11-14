@@ -278,6 +278,10 @@ from open_webui.config import (
     ENABLE_EVALUATION_ARENA_MODELS,
     USER_PERMISSIONS,
     DEFAULT_USER_ROLE,
+    # API cache (models list)
+    ENABLE_API_CACHE,
+    MODELS_LIST_TTL_SECONDS,
+    WORKFLOWS_LIST_TTL_SECONDS,
     DEFAULT_PROMPT_SUGGESTIONS,
     DEFAULT_MODELS,
     DEFAULT_ARENA_MODEL,
@@ -574,6 +578,13 @@ app.state.config.ENABLE_USER_WEBHOOKS = ENABLE_USER_WEBHOOKS
 app.state.config.ENABLE_CHAT_CACHE = ENABLE_CHAT_CACHE
 app.state.config.CHAT_CACHE_MAX_RECENT = CHAT_CACHE_MAX_RECENT
 app.state.config.CHAT_CACHE_TTL_SECONDS = CHAT_CACHE_TTL_SECONDS
+
+# API cache (models list)
+# Redis Model Caching: feature flags for Redis-backed /api/models cache
+app.state.config.ENABLE_API_CACHE = ENABLE_API_CACHE
+app.state.config.MODELS_LIST_TTL_SECONDS = MODELS_LIST_TTL_SECONDS
+# Redis workflow caching: binds workflows list TTL to app state / enables workflows caching with configurable TTL
+app.state.config.WORKFLOWS_LIST_TTL_SECONDS = WORKFLOWS_LIST_TTL_SECONDS
 
 app.state.config.ENABLE_EVALUATION_ARENA_MODELS = ENABLE_EVALUATION_ARENA_MODELS
 app.state.config.EVALUATION_ARENA_MODELS = EVALUATION_ARENA_MODELS
@@ -1035,6 +1046,7 @@ if audit_level != AuditLevel.NONE:
 
 @app.get("/api/models")
 async def get_models(request: Request, user=Depends(get_verified_user)):
+    # Redis Model Caching: uses utils.get_all_models (Redis-cached merged list)
     def get_filtered_models(models, user):
         filtered_models = []
         for model in models:

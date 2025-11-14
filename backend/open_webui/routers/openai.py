@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Literal, Optional, overload
+import time
 
 import aiohttp
 from aiocache import cached
@@ -175,6 +176,16 @@ async def update_config(
         for key, value in request.app.state.config.OPENAI_API_CONFIGS.items()
         if key in keys
     }
+
+    # Redis Model Caching: invalidate models cache on OpenAI provider config changes
+    try:
+        r = getattr(request.app.state.config, "_redis", None)
+        if r:
+            for k in r.scan_iter("open-webui:api:models:*"):
+                r.delete(k)
+            print("[ApiCache] DEL models")
+    except Exception:
+        pass
 
     return {
         "ENABLE_OPENAI_API": request.app.state.config.ENABLE_OPENAI_API,
@@ -384,12 +395,35 @@ async def get_filtered_models(models, user):
     return filtered_models
 
 
+# Redis Model Caching: aggregate provider raw models list (OpenAI) and cache (raw variant)
 @cached(ttl=1)
 async def get_all_models(request: Request, user: UserModel) -> dict[str, list]:
     log.info("get_all_models()")
 
     if not request.app.state.config.ENABLE_OPENAI_API:
         return {"data": []}
+
+    # Redis-backed aggregate cache (raw, unfiltered list)
+    r = getattr(request.app.state.config, "_redis", None)
+    cache_ok = bool(r and getattr(request.app.state.config, "ENABLE_API_CACHE", False))
+    cache_key = "open-webui:api:models:raw:v1"
+    if cache_ok:
+        try:
+            t0 = time.time()
+            cached = r.get(cache_key)
+            if cached:
+                models = json.loads(cached)
+                # Ensure OPENAI_MODELS mapping is populated for later lookups
+                try:
+                    request.app.state.OPENAI_MODELS = {
+                        model["id"]: model for model in models.get("data", [])
+                    }
+                except Exception:
+                    request.app.state.OPENAI_MODELS = {}
+                print(f"[ApiCache] HIT models dt={int((time.time()-t0)*1000)}ms")
+                return models
+        except Exception:
+            pass
 
     responses = await get_all_models_responses(request, user=user)
 
@@ -442,6 +476,14 @@ async def get_all_models(request: Request, user: UserModel) -> dict[str, list]:
     log.debug(f"models: {models}")
 
     request.app.state.OPENAI_MODELS = {model["id"]: model for model in models["data"]}
+
+    if cache_ok:
+        try:
+            ttl = int(getattr(request.app.state.config, "MODELS_LIST_TTL_SECONDS", 300) or 300)
+            r.setex(cache_key, ttl, json.dumps(models))
+            print(f"[ApiCache] SET models ttl={ttl}s")
+        except Exception:
+            pass
     return models
 
 

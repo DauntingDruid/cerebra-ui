@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.encoders import jsonable_encoder
 from typing import List, Optional, Dict, Any
 import asyncio
 import logging
@@ -22,6 +23,18 @@ from open_webui.models.users import UserModel
 router = APIRouter()
 log = logging.getLogger(__name__)
 
+def _invalidate_workflows_cache(request: Request):
+    # Redis workflow caching: invalidates all cached workflows list keys on create/update/delete
+    # Scans and deletes keys matching pattern open-webui:api:workflows:list:* to clear per-user caches
+    try:
+        r = getattr(request.app.state.config, "_redis", None)
+        if not r or not getattr(request.app.state.config, "ENABLE_API_CACHE", False):
+            return
+        for k in r.scan_iter("open-webui:api:workflows:list:*"):
+            r.delete(k)
+        print("[ApiCache] DEL workflows")
+    except Exception:
+        pass
 
 def _norm(s: Optional[str]) -> str:
     """Lowercase + strip for consistent matching."""
@@ -51,13 +64,37 @@ def _fix_endpoint_for_container(endpoint_url: Optional[str]) -> Optional[str]:
 ####################
 
 @router.get("/", response_model=List[WorkflowModel])
-async def get_workflows(user: UserModel = Depends(get_verified_user)):
+async def get_workflows(request: Request, user: UserModel = Depends(get_verified_user)):
     """
     ✅ UPDATED: Get workflows accessible to current user
     - Admin: sees all workflows
     - Regular user: sees public workflows + their own
     """
-    return Workflows.get_workflows_for_user(user.id, user.role)
+    # Redis workflow caching: caches workflows list per-user with role+user_id scoping / checks cache first, falls back to DB, stores JSON-serialized result with TTL
+    r = getattr(request.app.state.config, "_redis", None)
+    cache_ok = bool(r and getattr(request.app.state.config, "ENABLE_API_CACHE", False))
+    cache_key = f"open-webui:api:workflows:list:v1:{getattr(user,'role',None)}:{user.id}"
+    if cache_ok:
+        try:
+            cached = r.get(cache_key)
+            if cached:
+                print("[ApiCache] HIT workflows")
+                return json.loads(cached)
+        except Exception:
+            pass
+
+    data = Workflows.get_workflows_for_user(user.id, user.role)
+
+    # Ensure JSON-serializable output and set cache (handles datetime, etc.)
+    serializable = jsonable_encoder(data)
+    if cache_ok:
+        try:
+            ttl = int(getattr(request.app.state.config, "WORKFLOWS_LIST_TTL_SECONDS", 300) or 300)
+            r.setex(cache_key, ttl, json.dumps(serializable))
+            print(f"[ApiCache] SET workflows ttl={ttl}s")
+        except Exception:
+            pass
+    return data
 
 
 @router.get("/{workflow_id}", response_model=WorkflowModel)
@@ -91,7 +128,8 @@ async def get_workflow(workflow_id: str, user: UserModel = Depends(get_verified_
 @router.post("/", response_model=WorkflowModel)
 async def create_workflow(
     form_data: WorkflowForm,
-    user: UserModel = Depends(get_verified_user)
+    user: UserModel = Depends(get_verified_user),
+    request: Request = None,
 ):
     """Create a new workflow"""
     # normalize type and fix endpoint for container if present
@@ -109,6 +147,9 @@ async def create_workflow(
             detail="Failed to create workflow"
         )
 
+    # Redis workflow caching: invalidates cache after workflow creation / clears all cached workflows lists to prevent stale data
+    if request:
+        _invalidate_workflows_cache(request)
     return workflow
 
 
@@ -116,7 +157,8 @@ async def create_workflow(
 async def update_workflow(
     workflow_id: str,
     form_data: WorkflowForm,
-    user: UserModel = Depends(get_verified_user)
+    user: UserModel = Depends(get_verified_user),
+    request: Request = None,
 ):
     """
     ✅ UNCHANGED: Update workflow - only owner or admin can edit
@@ -151,13 +193,17 @@ async def update_workflow(
             detail="Failed to update workflow"
         )
 
+    # Redis workflow caching: invalidates cache after workflow update / clears all cached workflows lists to prevent stale data
+    if request:
+        _invalidate_workflows_cache(request)
     return workflow
 
 
 @router.delete("/{workflow_id}")
 async def delete_workflow(
     workflow_id: str,
-    user: UserModel = Depends(get_verified_user)
+    user: UserModel = Depends(get_verified_user),
+    request: Request = None,
 ):
     """
     ✅ UNCHANGED: Delete workflow - only owner or admin can delete
@@ -185,6 +231,9 @@ async def delete_workflow(
             detail="Failed to delete workflow"
         )
 
+    # Redis workflow caching: invalidates cache after workflow deletion / clears all cached workflows lists to prevent stale data
+    if request:
+        _invalidate_workflows_cache(request)
     return {"status": True, "message": "Workflow deleted successfully"}
 
 

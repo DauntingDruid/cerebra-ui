@@ -18,6 +18,20 @@ from open_webui.utils.access_control import has_access, has_permission
 router = APIRouter()
 
 
+def _invalidate_models_cache(request: Request):
+    # Redis Model Caching: purge all models list cache variants in Redis
+    try:
+        r = getattr(request.app.state.config, "_redis", None)
+        if not r or not getattr(request.app.state.config, "ENABLE_API_CACHE", False):
+            return
+        # Remove all aggregated models cache variants
+        for k in r.scan_iter("open-webui:api:models:*"):
+            r.delete(k)
+        print("[ApiCache] DEL models")
+    except Exception:
+        pass
+
+
 ###########################
 # GetModels
 ###########################
@@ -163,7 +177,8 @@ async def get_model_by_id(id: str, user=Depends(get_verified_user)):
 
 
 @router.post("/model/toggle", response_model=Optional[ModelResponse])
-async def toggle_model_by_id(id: str, user=Depends(get_verified_user)):
+async def toggle_model_by_id(id: str, user=Depends(get_verified_user), request: Request = None):
+    # Redis Model Caching: toggling a model invalidates the cached models list
     model = Models.get_model_by_id(id)
     if model:
         if (
@@ -174,6 +189,8 @@ async def toggle_model_by_id(id: str, user=Depends(get_verified_user)):
             model = Models.toggle_model_by_id(id)
 
             if model:
+                if request:
+                    _invalidate_models_cache(request)
                 return model
             else:
                 raise HTTPException(
@@ -202,7 +219,9 @@ async def update_model_by_id(
     id: str,
     form_data: ModelForm,
     user=Depends(get_verified_user),
+    request: Request = None,
 ):
+    # Redis Model Caching: updating a model invalidates the cached models list
     model = Models.get_model_by_id(id)
 
     if not model:
@@ -222,6 +241,8 @@ async def update_model_by_id(
         )
 
     model = Models.update_model_by_id(id, form_data)
+    if request and model:
+        _invalidate_models_cache(request)
     return model
 
 
@@ -231,7 +252,8 @@ async def update_model_by_id(
 
 
 @router.delete("/model/delete", response_model=bool)
-async def delete_model_by_id(id: str, user=Depends(get_verified_user)):
+async def delete_model_by_id(id: str, user=Depends(get_verified_user), request: Request = None):
+    # Redis Model Caching: deleting a model invalidates the cached models list
     model = Models.get_model_by_id(id)
     if not model:
         raise HTTPException(
@@ -250,10 +272,15 @@ async def delete_model_by_id(id: str, user=Depends(get_verified_user)):
         )
 
     result = Models.delete_model_by_id(id)
+    if request and result:
+        _invalidate_models_cache(request)
     return result
 
 
 @router.delete("/delete/all", response_model=bool)
-async def delete_all_models(user=Depends(get_admin_user)):
+async def delete_all_models(user=Depends(get_admin_user), request: Request = None):
+    # Redis Model Caching: bulk delete invalidates the cached models list
     result = Models.delete_all_models()
+    if request and result:
+        _invalidate_models_cache(request)
     return result

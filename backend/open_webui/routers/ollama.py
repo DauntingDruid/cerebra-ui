@@ -288,6 +288,16 @@ async def update_config(
         if key in keys
     }
 
+    # Redis Model Caching: invalidate models cache on Ollama provider config changes
+    try:
+        r = getattr(request.app.state.config, "_redis", None)
+        if r:
+            for k in r.scan_iter("open-webui:api:models:*"):
+                r.delete(k)
+            print("[ApiCache] DEL models")
+    except Exception:
+        pass
+
     return {
         "ENABLE_OLLAMA_API": request.app.state.config.ENABLE_OLLAMA_API,
         "OLLAMA_BASE_URLS": request.app.state.config.OLLAMA_BASE_URLS,
@@ -295,6 +305,7 @@ async def update_config(
     }
 
 
+# Redis Model Caching: contributes Ollama models for merged cache; reflects in /api/models
 @cached(ttl=1)
 async def get_all_models(request: Request, user: UserModel = None):
     log.info("get_all_models()")
