@@ -343,6 +343,17 @@ MODELS_LIST_TTL_SECONDS = PersistentConfig(
     int(os.environ.get("MODELS_LIST_TTL_SECONDS", "300")),
 )
 
+####################################
+# API Cache (WORKFLOWS LIST)
+####################################
+
+# Redis workflow caching: TTL configuration for workflows list cache / persistent config flag defaulting to 300 seconds
+WORKFLOWS_LIST_TTL_SECONDS = PersistentConfig(
+    "WORKFLOWS_LIST_TTL_SECONDS",
+    "cache.workflows.ttl",
+    int(os.environ.get("WORKFLOWS_LIST_TTL_SECONDS", "300")),
+)
+
 
 ####################################
 # WEBUI_AUTH (Required for security)

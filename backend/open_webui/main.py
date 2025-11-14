@@ -281,6 +281,7 @@ from open_webui.config import (
     # API cache (models list)
     ENABLE_API_CACHE,
     MODELS_LIST_TTL_SECONDS,
+    WORKFLOWS_LIST_TTL_SECONDS,
     DEFAULT_PROMPT_SUGGESTIONS,
     DEFAULT_MODELS,
     DEFAULT_ARENA_MODEL,
@@ -582,6 +583,8 @@ app.state.config.CHAT_CACHE_TTL_SECONDS = CHAT_CACHE_TTL_SECONDS
 # Redis Model Caching: feature flags for Redis-backed /api/models cache
 app.state.config.ENABLE_API_CACHE = ENABLE_API_CACHE
 app.state.config.MODELS_LIST_TTL_SECONDS = MODELS_LIST_TTL_SECONDS
+# Redis workflow caching: binds workflows list TTL to app state / enables workflows caching with configurable TTL
+app.state.config.WORKFLOWS_LIST_TTL_SECONDS = WORKFLOWS_LIST_TTL_SECONDS
 
 app.state.config.ENABLE_EVALUATION_ARENA_MODELS = ENABLE_EVALUATION_ARENA_MODELS
 app.state.config.EVALUATION_ARENA_MODELS = EVALUATION_ARENA_MODELS
